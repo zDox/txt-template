@@ -23,10 +23,10 @@ Bar
 ## EBNF
 <template> ::= (<text> | <key> | <option> | <constant>)+
 <text>     ::= <ws>? <char> (<char> | <ws>)*
-<key>      ::= "{" <ident> "}"                             /* case 1 */ 
-<option>   ::= "$" <key>                                   /* case 1 */
-<constant> ::= "$" <ident>                                 /* case 1 */
-<ident>    ::= (<char> | [0-9])+
+<key>      ::= "{" <ident> "}"         // done
+<option>   ::= "$" <key>               // done
+<constant> ::= "$" <ident>             // done
+<ident>    ::= (<char> | [0-9])+       // done
 <ws>       ::= (" " | "\t" | "\n")+
 <char>     ::= ([A-Z] | [a-z])
 
@@ -60,4 +60,8 @@ fn A(scanner: &mut Scanner) -> Result<(), ParseError> {
 }
 ```
 `scan` can be used for different kind of sequences too E.g. using `Action::Return` for EBNF `*`.
+
+> Any scanner methods which use callbacks like `scan` and `transform` need to be written
+> from scratch inside the respective parsing method when porting to c++. This is because
+> c++ doesn't offer pleasant passing of functions as arguments.
 
