@@ -66,13 +66,10 @@ pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
 
 // <chars> ::= ([A-Z] | [a-z])
 pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
-    let chars = scanner.scan(|symbol| match symbol as u8 {
-        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
-        | b',' | b'.' | b'<' | b'>' | b'?' | b'/' | b'|' | b';' | b':' | b'[' | b']'
-        | b'=' | b'+' | b'-' | b'_' | b')' | b'(' | b'*' | b'&' | b'^' | b'%' | b'#'
-        | b'@' | b'!' | b'\'' | b'"' | b'\xe4' | b'\xC4' | b'\xf6' | b'\xd6' | b'\xfc' | b'\xdc' | b'\xdf' | b'~'
-            => Some(Action::Request),
-        _ => None,
+    let chars = scanner.scan(|symbol| if symbol.is_terminal() {
+            None
+        } else {
+            Some(Action::Request)
     })?;
     Ok(chars)
 }
@@ -117,18 +114,26 @@ pub fn constant(scanner: &mut Scanner) -> Result<Ident, ParseError> {
 }
 
 // Terminal-symbol representation
+#[repr(u8)]
 pub enum Terminals {
-    LBrace,
-    RBrace,
-    Cash,
+    LBrace = b'{',
+    RBrace = b'}',
+    Cash = b'$',
 }
 
-impl From<Terminals> for char {
-    fn from(terminal: Terminals) -> Self {
-        match terminal {
-            Terminals::LBrace => '{',
-            Terminals::RBrace => '}',
-            Terminals::Cash => '$',
+// Trait which can be implementend on any potential terminal or non-terminal symbol
+pub trait Symbol {
+    fn is_terminal(&self) -> bool;
+    fn is_non_terminal(&self) -> bool {
+        !self.is_terminal()
+    }
+}
+
+impl Symbol for char {
+    fn is_terminal(&self) -> bool {
+        match self {
+            '{' | '}' | '$' => true,
+            _ => false,
         }
     }
 }

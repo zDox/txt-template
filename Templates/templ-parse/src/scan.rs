@@ -89,7 +89,7 @@ impl Scanner {
 
     pub fn take(&mut self, terminal: Terminals) -> Result<(), ScanError> {
         if let Some(character) = self.current_char() {
-            if char::from(terminal) == character {
+            if terminal as u8 as char == character {
                 self.cursor.inc();
                 Ok(())
             } else {
