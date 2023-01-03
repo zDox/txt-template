@@ -8,7 +8,12 @@ use crate::scan::Scanner;
 
 pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, ParseError> {
     let mut scanner = Scanner::new(s);
-    parse::template(&mut scanner)
+    let result = parse::template(&mut scanner)?;
+    if scanner.at_end() {
+        Ok(result)
+    } else {
+        Err(ParseError::NotFinished)
+    }
 }
 
 #[cfg(test)]

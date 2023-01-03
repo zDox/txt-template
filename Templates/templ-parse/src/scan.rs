@@ -64,6 +64,14 @@ impl Scanner {
         }
     }
 
+    pub fn at_end(&self) -> bool {
+        if self.cursor.at() == self.chars.len() {
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn begin(&mut self) {
         self.cursor.begin();
     }

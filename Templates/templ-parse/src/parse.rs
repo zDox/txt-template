@@ -139,4 +139,6 @@ pub enum ParseError {
     UnexpectedSymbol(String),
     #[error("Lexical Error: {0}")]
     LexicalError(#[from] ScanError),
+    #[error("Failed to parse the entire input")]
+    NotFinished,
 }
