@@ -79,10 +79,47 @@ mod tests {
     }
 
     #[test]
-    fn templates_work() {
-        let template = "{key}$Constant${Option}";
-        let mut scanner = Scanner::new(&template);
-        assert_eq!(parse::template(&mut scanner), Ok(()));
+    fn correct_templates_are_accepted() {
+        let templates = vec![
+            "{key}$Constant${Option}",
+            "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sende",
+            "Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar",
+        ];
+        helper::test_correct_variants(parse::template, templates);
+    }
+
+    #[test]
+    fn correct_texts_are_accepted() {
+        let texts = vec![
+            "Sehr geehrter Herr Foo \n\t iblbl", "\nHallo", "h", "\nllsf\n",
+            ")_!_&_)*@#*^+_[]0=082q5-=8';,m;,.<''\"",    
+        ];
+        helper::test_correct_variants(parse::text, texts);
+    }
+
+    #[test]
+    fn incorrect_texts_are_rejected() {
+        let cases = vec![
+            ("\n \t ", "only contains whitespace characters"),
+            ("{}\nsf{dsf}$", "contains invalid characters"),
+            ("$$}}{}$", "only contains invalid characters"),
+        ];
+        helper::test_incorrect_variants(parse::text, cases);
+    }
+
+    #[test]
+    fn correct_whitespace_sequences_are_accepted() {
+        let whitespaces = vec!["\n", "\t", " ", "  \n", "\t  \n"];
+        helper::test_correct_variants(parse::ws, whitespaces);
+    }
+
+    #[test]
+    fn incorrect_whitespace_sequences_are_rejected() {
+        let cases = vec![
+            ("sdf", "does not contain any whitespace characters"),
+            ("hswu\n sdh", "contains some non whitespace characters"),
+        ];
+        helper::test_incorrect_variants(parse::ws, cases);
     }
 
     mod helper {

@@ -22,13 +22,14 @@ Bar
 
 ## EBNF
 <template> ::= (<text> | <key> | <option> | <constant>)+
-<text>     ::= <ws>? <char> (<char> | <ws>)*
-<key>      ::= "{" <ident> "}"         // done
-<option>   ::= "$" <key>               // done
-<constant> ::= "$" <ident>             // done
-<ident>    ::= (<char> | [0-9])+       // done
+<text>     ::= <ws>? <chars> (<chars> | <ws>)*
+<key>      ::= "{" <ident> "}"
+<option>   ::= "$" <key>
+<constant> ::= "$" <ident>
+<ident>    ::= (<char> | [0-9])+
 <ws>       ::= (" " | "\t" | "\n")+
 <char>     ::= ([A-Z] | [a-z])
+<chars>    ::= <char>+
 
 ## Implementation of different production rules
 

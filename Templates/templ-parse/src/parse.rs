@@ -1,5 +1,8 @@
 use crate::scan::{Scanner, ScanError, Action};
 
+// TODO: Failable parsing, which resets the cursor if the rule could not be parsed successfully
+// TODO: Proper Error and Result-Token propagation
+
 // template ::= ( <key> | <option> | <constant> )+
 pub fn template(scanner: &mut Scanner) -> Result<(), ParseError> {
     let mut tokens: Vec<String> = Vec::new();
@@ -12,8 +15,8 @@ pub fn template(scanner: &mut Scanner) -> Result<(), ParseError> {
             tokens.push("constant".into());
         } else if let Ok(()) = option(scanner) {
             tokens.push("option".into());
-        /* } else if let Ok(()) = text(scanner) {
-            tokens.push("text".into());*/
+        } else if let Ok(()) = text(scanner) {
+            tokens.push("text".into());
         } else {
             if require {
                 break Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
@@ -25,6 +28,41 @@ pub fn template(scanner: &mut Scanner) -> Result<(), ParseError> {
         // (could be replace with `if tokens.len() > 0`)
         require = false;
     }
+}
+
+// <text> ::= <ws>? <chars> (<chars> | <ws>)*
+// <ws>   ::= (" " | "\t" | "\n")+
+// <chars> ::= ([A-Z] | [a-z])+
+pub fn text(scanner: &mut Scanner) -> Result<(), ParseError> {
+    let _ = ws(scanner);  // text may start out with a whitespace but it does not have to
+    characters(scanner)?;  // characters are required at least once
+    // now any number of whitespace or character sequences is allowed
+    return loop {
+        if characters(scanner).is_err() && ws(scanner).is_err() {
+            break Ok(())
+        }
+    }
+}
+
+// <ws> ::= (" " | "\t" | "\n")+
+pub fn ws(scanner: &mut Scanner) -> Result<(), ParseError> {
+    scanner.scan(|symbol| match symbol {
+        ' ' | '\t' | '\n' => Some(Action::Request),
+        _ => None,
+    })?;
+    Ok(())
+}
+
+// <chars> ::= ([A-Z] | [a-z])
+pub fn characters(scanner: &mut Scanner) -> Result<(), ParseError> {
+    scanner.scan(|symbol| match symbol as u8 {
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
+        | b',' | b'.' | b'<' | b'>' | b'?' | b'/' | b'|' | b';' | b':' | b'[' | b']'
+        | b'=' | b'+' | b'-' | b'_' | b')' | b'(' | b'*' | b'&' | b'^' | b'%' | b'#'
+        | b'@' | b'!' | b'\'' | b'"' => Some(Action::Request),
+        _ => None,
+    })?;
+    Ok(())
 }
 
 // key ::= "{" <ident> "}"
@@ -39,9 +77,7 @@ pub fn key(scanner: &mut Scanner) -> Result<(), ParseError> {
 // <ident> ::= (<char> | [0-9])+
 // <char> ::= ([A-Z] | [a-z])   
 pub fn ident(scanner: &mut Scanner) -> Result<(), ParseError> {
-    scanner.scan(|sequence| match sequence.chars().last().unwrap() as u8 {
-        // Request the next character while the current character remains correct.
-        // Once an invalid character is reached, the current sequence is returned
+    scanner.scan(|symbol| match symbol as u8 {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => Some(Action::Request),
         _ => None,
     })?;

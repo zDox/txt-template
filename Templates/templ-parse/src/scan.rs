@@ -26,7 +26,7 @@ impl Scanner {
         }
     }
 
-    pub fn scan(&mut self, callback: impl Fn(&str) -> Option<Action>) -> Result<String, ScanError> {
+    pub fn scan(&mut self, callback: impl Fn(char) -> Option<Action>) -> Result<String, ScanError> {
         let mut sequence = String::new();
         let mut require = false;
         let mut request = false;
@@ -36,7 +36,7 @@ impl Scanner {
                 Some(target) => {
                     sequence.push(*target);
 
-                    match callback(&sequence) {
+                    match callback(*target) {
                         // Continue but return ok if next iteration fails
                         Some(Action::Request) => {
                             self.cursor += 1;
