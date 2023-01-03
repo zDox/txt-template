@@ -1,103 +1,118 @@
 use crate::scan::{Scanner, ScanError, Action};
+use crate::token::{ContentToken, Ident};
 
-// TODO: Failable parsing, which resets the cursor if the rule could not be parsed successfully
-// TODO: Proper Error and Result-Token propagation
+// TODO: Thorough error bubbling and handling
 
 // template ::= ( <key> | <option> | <constant> )+
-pub fn template(scanner: &mut Scanner) -> Result<(), ParseError> {
-    let mut tokens: Vec<String> = Vec::new();
-    let mut require = true;  // require the next iteration to be successful
+pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
+    let mut tokens: Vec<ContentToken> = Vec::new();
 
     loop {
-        if let Ok(()) = key(scanner) {
-            tokens.push("key".into());
-        } else if let Ok(()) = constant(scanner) {
-            tokens.push("constant".into());
-        } else if let Ok(()) = option(scanner) {
-            tokens.push("option".into());
-        } else if let Ok(()) = text(scanner) {
-            tokens.push("text".into());
+        if let Ok(ident) = key(scanner) {
+            tokens.push(ContentToken::Key(ident));
+            continue;
+        } else if let Ok(ident) = constant(scanner) {
+            tokens.push(ContentToken::Constant(ident));
+            continue;
+        } else if let Ok(ident) = option(scanner) {
+            tokens.push(ContentToken::Option(ident));
+            continue;
+        } else if let Ok(text) = text(scanner) {
+            tokens.push(ContentToken::Text(text));
+            continue;
         } else {
-            if require {
-                break Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
+            // Require at least one correct non-terminal to be found
+            if tokens.len() > 0 {
+                break Ok(tokens)
             } else {
-                break Ok(())
+                break Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
             }
         }
-        // switch off require after the first successful iteration
-        // (could be replace with `if tokens.len() > 0`)
-        require = false;
     }
 }
 
-// <text> ::= <ws>? <chars> (<chars> | <ws>)*
+// <text> ::= (<chars> | <ws>)+
 // <ws>   ::= (" " | "\t" | "\n")+
 // <chars> ::= ([A-Z] | [a-z])+
-pub fn text(scanner: &mut Scanner) -> Result<(), ParseError> {
-    let _ = ws(scanner);  // text may start out with a whitespace but it does not have to
-    characters(scanner)?;  // characters are required at least once
-    // now any number of whitespace or character sequences is allowed
+pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
+    let mut text = String::new();
+
     return loop {
-        if characters(scanner).is_err() && ws(scanner).is_err() {
-            break Ok(())
+        if let Ok(chars) = ws(scanner) {
+            text.push_str(&chars);
+            continue;
+        } else if let Ok(chars) = characters(scanner) {
+            text.push_str(&chars);
+            continue;
+        } else {
+            // Return the text once no valid characters can be found
+            break if !text.is_empty() {            
+                Ok(text)
+            } else {
+                Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
+            }
         }
     }
 }
 
 // <ws> ::= (" " | "\t" | "\n")+
-pub fn ws(scanner: &mut Scanner) -> Result<(), ParseError> {
-    scanner.scan(|symbol| match symbol {
+pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
+    let ws_chars = scanner.scan(|symbol| match symbol {
         ' ' | '\t' | '\n' => Some(Action::Request),
         _ => None,
     })?;
-    Ok(())
+    Ok(ws_chars)
 }
 
 // <chars> ::= ([A-Z] | [a-z])
-pub fn characters(scanner: &mut Scanner) -> Result<(), ParseError> {
-    scanner.scan(|symbol| match symbol as u8 {
+pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
+    let chars = scanner.scan(|symbol| match symbol as u8 {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
         | b',' | b'.' | b'<' | b'>' | b'?' | b'/' | b'|' | b';' | b':' | b'[' | b']'
         | b'=' | b'+' | b'-' | b'_' | b')' | b'(' | b'*' | b'&' | b'^' | b'%' | b'#'
         | b'@' | b'!' | b'\'' | b'"' => Some(Action::Request),
         _ => None,
     })?;
-    Ok(())
+    Ok(chars)
 }
 
 // key ::= "{" <ident> "}"
-pub fn key(scanner: &mut Scanner) -> Result<(), ParseError> {
+pub fn key(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    // I don't now why not to use `begin`/`commit` here but it breaks the program
+    // scanner.begin();
     scanner.take(Terminals::LBrace)?;
-    ident(scanner)?;
+    let ident = ident(scanner)?;
     scanner.take(Terminals::RBrace)?;
-
-    Ok(())
+    // scanner.commit();
+    Ok(ident)
 }
 
 // <ident> ::= (<char> | [0-9])+
 // <char> ::= ([A-Z] | [a-z])   
-pub fn ident(scanner: &mut Scanner) -> Result<(), ParseError> {
-    scanner.scan(|symbol| match symbol as u8 {
+pub fn ident(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    let ident = scanner.scan(|symbol| match symbol as u8 {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => Some(Action::Request),
         _ => None,
     })?;
-    Ok(()) // at some point return the ident itself instead
+    Ok(Ident::from(ident))  // at some point return the ident itself instead
 }
 
 // <option> ::= "$" <key>
-pub fn option(scanner: &mut Scanner) -> Result<(), ParseError> {
+pub fn option(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    scanner.begin();
     scanner.take(Terminals::Cash)?;
-    key(scanner)?;
-
-    Ok(())
+    let ident = key(scanner)?;
+    scanner.commit();
+    Ok(ident)
 }
 
 // <constant> ::= "$" <ident>
-pub fn constant(scanner: &mut Scanner) -> Result<(), ParseError> {
+pub fn constant(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    scanner.begin();
     scanner.take(Terminals::Cash)?;
-    ident(scanner)?;
-
-    Ok(())
+    let ident = ident(scanner)?;
+    scanner.commit();
+    Ok(ident)    
 }
 
 // Terminal-symbol representation

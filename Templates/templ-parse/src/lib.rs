@@ -1,6 +1,15 @@
 pub mod parse; 
 pub mod scan;
+pub mod token;
 
+use crate::token::ContentToken;
+use crate::parse::ParseError;
+use crate::scan::Scanner;
+
+pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, ParseError> {
+    let mut scanner = Scanner::new(s);
+    parse::template(&mut scanner)
+}
 
 #[cfg(test)]
 mod tests {
@@ -33,7 +42,7 @@ mod tests {
 
         let all_symbols = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         let mut scanner = Scanner::new(&all_symbols);
-        assert_eq!(parse::ident(&mut scanner), Ok(()));
+        assert!(parse::ident(&mut scanner).is_ok());
     }
 
     #[test]
@@ -125,25 +134,24 @@ mod tests {
     mod helper {
         use super::*;
 
-        pub fn test_correct_variants(
-            parse_fn: fn(&mut Scanner) -> Result<(), parse::ParseError>,
+        pub fn test_correct_variants<T: std::fmt::Debug>(
+            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
             variants: Vec<&str>,
         ) {
             for variant in variants {
                 let mut scanner = Scanner::new(&variant);
-                assert_eq!(parse_fn(&mut scanner), Ok(()));
+                assert!(parse_fn(&mut scanner).is_ok());
             }
         }
 
-        pub fn test_incorrect_variants(
-            parse_fn: fn(&mut Scanner) -> Result<(), parse::ParseError>,
+        pub fn test_incorrect_variants<T: std::fmt::Debug>(
+            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
             cases: Vec<(&str, &str)>,
         ) {
             for (variant, case) in cases {
                 let mut scanner = Scanner::new(&variant);
-                assert_ne!(
-                    parse_fn(&mut scanner),
-                    Ok(()),
+                assert!(
+                    parse_fn(&mut scanner).is_err(),
                     "An invalid variant: '{}', which {} was falsely accepted!", 
                     variant,
                     case,
