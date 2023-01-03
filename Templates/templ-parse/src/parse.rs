@@ -70,7 +70,8 @@ pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
         | b',' | b'.' | b'<' | b'>' | b'?' | b'/' | b'|' | b';' | b':' | b'[' | b']'
         | b'=' | b'+' | b'-' | b'_' | b')' | b'(' | b'*' | b'&' | b'^' | b'%' | b'#'
-        | b'@' | b'!' | b'\'' | b'"' => Some(Action::Request),
+        | b'@' | b'!' | b'\'' | b'"' | b'\xe4' | b'\xC4' | b'\xf6' | b'\xd6' | b'\xfc' | b'\xdc' | b'\xdf' | b'~'
+            => Some(Action::Request),
         _ => None,
     })?;
     Ok(chars)
