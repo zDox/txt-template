@@ -15,6 +15,8 @@ pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, ParseError> {
 mod tests {
     use crate::scan::Scanner;
     use crate::parse;
+    use crate::token::{ContentToken, Ident};
+    use crate::parse_str;
 
     #[test]
     fn correct_keys_are_accepted() {
@@ -91,10 +93,48 @@ mod tests {
     fn correct_templates_are_accepted() {
         let templates = vec![
             "{key}$Constant${Option}",
-            "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sende",
+            "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sender",
             "Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar",
         ];
         helper::test_correct_variants(parse::template, templates);
+    }
+
+    #[test]
+    fn templates_are_parsed_correctly() {
+        // Lenghts of literal text and idents in decreased so tests are more consice
+        // Other tests assert that any idents/text passes
+        let pairs = vec![
+            ("{key}$Constant${Option}", vec![
+                ContentToken::Key(Ident::new("key")),
+                ContentToken::Constant(Ident::new("Constant")),
+                ContentToken::Option(Ident::new("Option")),
+            ]),
+          ("S ${Anrede} {name}\n{n}\n$M\n$S", vec![
+                ContentToken::Text("S ".into()),
+                ContentToken::Option(Ident::new("Anrede")),
+                ContentToken::Text(" ".into()),
+                ContentToken::Key(Ident::new("name")),
+                ContentToken::Text("\n".into()),
+                ContentToken::Key(Ident::new("n")),
+                ContentToken::Text("\n".into()),
+                ContentToken::Constant(Ident::new("M")),
+                ContentToken::Text("\n".into()),
+                ContentToken::Constant(Ident::new("S")),
+            ]),
+          ("Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar", vec![
+                ContentToken::Text("Sehr geehrte Frau ".into()),
+                ContentToken::Key(Ident::new("name")),
+                ContentToken::Text("\n".into()),
+                ContentToken::Key(Ident::new("nachricht")),
+                ContentToken::Text("\nMit freundlichen Grüßen\nBar".into()),
+            ]),
+        ];
+        for (template, expected) in pairs {
+            let result = parse_str(template).unwrap();
+                for (idx, token) in result.iter().enumerate() {
+                assert_eq!(token, expected.get(idx).unwrap());
+            }
+        }
     }
 
     #[test]
@@ -102,6 +142,7 @@ mod tests {
         let texts = vec![
             "Sehr geehrter Herr Foo \n\t iblbl", "\nHallo", "h", "\nllsf\n",
             ")_!_&_)*@#*^+_[]0=082q5-=8';,m;,.<''\"",    
+            "\n \t ",
         ];
         helper::test_correct_variants(parse::text, texts);
     }
@@ -109,7 +150,6 @@ mod tests {
     #[test]
     fn incorrect_texts_are_rejected() {
         let cases = vec![
-            ("\n \t ", "only contains whitespace characters"),
             ("{}\nsf{dsf}$", "contains invalid characters"),
             ("$$}}{}$", "only contains invalid characters"),
         ];
