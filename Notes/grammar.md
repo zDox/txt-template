@@ -20,9 +20,9 @@ Mit freundlichen Grüßen
 Bar
 ```
 
-## EBNF
+## EBNF grammar
 <template> ::= (<text> | <key> | <option> | <constant>)+
-<text>     ::= <ws>? <chars> (<chars> | <ws>)*
+<text>     ::= (<chars> | <ws>)+
 <key>      ::= "{" <ident> "}"
 <option>   ::= "$" <key>
 <constant> ::= "$" <ident>
@@ -31,7 +31,13 @@ Bar
 <char>     ::= ([A-Z] | [a-z])
 <chars>    ::= <char>+
 
-## Implementation of different production rules
+### Corrections of the grammar
+1. <text> ::= <ws>? <chars> (<chars> | <ws>)* ==> <text> ::= (<chars> | <ws>)+
+It must be possible for the text non-terminal to only contain whitespace charactes too, so
+multiple non-text elements can be chained together, only separated by a whitespace.
+
+
+## Implementation of different production rules as pseudo rust code
 
 ### Case 1: <A> ::= terminal <B> terminal ...
 ```rust
@@ -42,21 +48,13 @@ fn A(scanner: &mut Scanner) -> Result<(), ParseError> {
   Ok(())
 }
 ```
-### Case 2: <A> ::= "b" | "c"
+### Case 2: <A> ::= "b" | "c"+
 ```rust
 fn A(scanner: &mut Scanner) -> Result<(), ParseError> {
-  scanner.transform(|character| match character {
-    'b' => Ok(()),
-    'c' => Ok(()),
-  })
-}
-```
-### Case 3: <A> ::= "b"+
-```rust
-fn A(scanner: &mut Scanner) -> Result<(), ParseError> {
-  scanner.scan(|sequence| match sequence.chars().last().unwrap() {
-    'b' => Some(Action::Request),  // correct symbol: try to get another one
-    _ => None,  // the new symbol in the sequence is not corret: finish
+  scanner.scan(|character| match character {
+    'b' => Some(Action::Return),
+    'c' => Some(Action::Request),
+    _ => None,
   })
 }
 ```
