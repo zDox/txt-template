@@ -1,4 +1,4 @@
-use crate::parse::Terminal;
+use crate::parse::Terminals;
 
 pub struct Scanner {
     cursor: usize,
@@ -13,7 +13,7 @@ impl Scanner {
         }
     }
 
-    pub fn take(&mut self, terminal: Terminal) -> Result<(), ScanError> {
+    pub fn take(&mut self, terminal: Terminals) -> Result<(), ScanError> {
         if let Some(character) = self.chars.get(self.cursor) {
             if char::from(terminal) == *character {
                 self.cursor += 1;
@@ -79,8 +79,8 @@ impl Scanner {
 #[derive(Debug)]
 pub enum Action {
     Request,
-    Return,
-    Require,
+    Return,  // allows EBNF *
+    Require,  // allows EBNF +
 }
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
@@ -94,33 +94,55 @@ pub enum ScanError {
 pub mod parse {
     use super::*;
 
+    // key ::= "{" <ident> "}"
     pub fn key(scanner: &mut Scanner) -> Result<(), ParseError> {
-        // key ::= "{" <ident> "}"
-        scanner.take(Terminal::LBrace)?;
+        scanner.take(Terminals::LBrace)?;
         ident(scanner)?;
-        scanner.take(Terminal::RBrace)?;
+        scanner.take(Terminals::RBrace)?;
 
         Ok(())
     }
 
+    // <ident> ::= (<char> | [0-9])+
+    // <char> ::= ([A-Z] | [a-z])   
     pub fn ident(scanner: &mut Scanner) -> Result<(), ParseError> {
         scanner.scan(|sequence| match sequence.chars().last().unwrap() as u8 {
+            // Request the next character while the current character remains correct.
+            // Once an invalid character is reached, the current sequence is returned
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => Some(Action::Request),
             _ => None,
         })?;
         Ok(()) // at some point return the ident itself instead
     }
 
-    pub enum Terminal {
-        LBrace,
-        RBrace,
+    // <option> ::= "$" <key>
+    pub fn option(scanner: &mut Scanner) -> Result<(), ParseError> {
+        scanner.take(Terminals::Cash)?;
+        key(scanner)?;
+
+        Ok(())
     }
 
-    impl From<Terminal> for char {
-        fn from(terminal: Terminal) -> Self {
+    // <constant> ::= "$" <ident>
+    pub fn constant(scanner: &mut Scanner) -> Result<(), ParseError> {
+        scanner.take(Terminals::Cash)?;
+        ident(scanner)?;
+
+        Ok(())
+    }
+
+    pub enum Terminals {
+        LBrace,
+        RBrace,
+        Cash,
+    }
+
+    impl From<Terminals> for char {
+        fn from(terminal: Terminals) -> Self {
             match terminal {
-                Terminal::LBrace => '{',
-                Terminal::RBrace => '}',
+                Terminals::LBrace => '{',
+                Terminals::RBrace => '}',
+                Terminals::Cash => '$',
             }
         }
     }
@@ -151,7 +173,8 @@ mod tests {
             ("{name", "is missing right brace"),
             ("name}", "is missing left brace"),
             ("{&*(^)}", "contains invalid characters"),
-            ("{ /t/n}", "contains whitespace charactes"),
+            ("{ /t/n}", "only contains whitespace charactes"),
+            ("{ /tsf/n}", "contains whitespace charactes"),
         ];
         helper::test_incorrect_variants(parse::key, cases);
     }
@@ -174,6 +197,38 @@ mod tests {
             ("&*!abc", "starts out with invalid characters"),
         ];
         helper::test_incorrect_variants(parse::ident, cases);
+    }
+
+    #[test]
+    fn correct_options_are_accepted() {
+        let options = vec!["${Adressat}", "${addressat}", "${NAME}"];
+        helper::test_correct_variants(parse::option, options);
+    }
+
+    #[test]
+    fn incorrect_options_are_rejected() {
+        let cases = vec![
+            ("$name", "is missing the braces"),
+            ("{name}", "is missing the dollar sign"),
+            ("${}", "is missing an identifier"),
+            ("$ {name}", "has a whitespace between the dollar sign and the first brace"),
+        ];
+        helper::test_incorrect_variants(parse::option, cases);
+    }
+
+    #[test]
+    fn correct_constants_are_accepted() {
+        let options = vec!["$MyName", "$myname", "$me13", "$3.141"];
+        helper::test_correct_variants(parse::constant, options);
+    }
+
+    #[test]
+    fn incorrect_constants_are_rejected() {
+        let cases = vec![
+            ("$ name", "has a whitespace between the dollar sign and the ident"),
+            ("${name}", "has braces around it's ident"),
+        ];
+        helper::test_incorrect_variants(parse::constant, cases);
     }
 
     mod helper {
