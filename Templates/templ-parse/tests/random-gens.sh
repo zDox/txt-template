@@ -3,6 +3,7 @@
 # Usage: DISPLAY=true ./random-gens.sh 20000 grammar.bnf ../target/debug/templ-parse
 
 set -eo pipefail
+set -e
 
 if ! [[ -x "$(command -v bnfgen)" ]]; then
   echo >&2 "Error: bnfgen is not installed. Visit https://baturin.org/tools/bnfgen/ to install it."

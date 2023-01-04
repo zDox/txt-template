@@ -2,6 +2,7 @@ use templ_parse::parse_str;
 
 use std::io::{Read, self};
 use std::env;
+use std::process;
 
 fn main() {
     let stdin = io::stdin();
@@ -15,7 +16,15 @@ fn main() {
         line.clear();
     }
 
-    let tokens = parse_str(&content).unwrap();
+    let tokens = match parse_str(&content) {
+        Ok(tokens) => tokens,
+        Err(err) => {
+            dbg!(&err);
+            eprintln!("{}", err);
+            process::exit(1);
+        },
+    };
+
     let display = env::var("DISPLAY").unwrap();
     if &display == "true" {
         println!("Input: \"{}\"\n", content);

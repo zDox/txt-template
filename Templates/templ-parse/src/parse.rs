@@ -1,7 +1,11 @@
 use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
 
-// TODO: Thorough error bubbling and handling
+// TODO: Display errors
+//     - info about possible correct characters if `scan` failed
+//        this has to come from a `parse` function because `scan`
+//        currently has now way to introspect the passed callback
+//     - info about correct characters is combinded with the attempted symbol
 
 // template ::= ( <key> | <option> | <constant> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
@@ -96,9 +100,25 @@ pub fn key(scanner: &mut Scanner) -> Result<Ident, ParseError> {
     // -> It did because there was only one layer of virtual cursors. Now layers
     // are unlimited so `begin`/`commit` work here too.
     scanner.begin();
-    scanner.take(Terminals::LBrace)?;
-    let ident = ident(scanner)?;
-    scanner.take(Terminals::RBrace)?;
+    if let Err(err) = scanner.take(Terminals::LBrace) {
+        let mut parse_err = ParseError::LexicalError(err); 
+        parse_err.context("Key closes with invalid character");
+        parse_err.possible("Maybe you meant '{'?");
+        return Err(parse_err);
+    }
+    let ident = match ident(scanner) {
+        Ok(ident) => ident,
+        Err(mut err) => {
+            err.context("Identifier for key contains an invalid character");
+            return Err(err);
+        },
+    };
+    if let Err(err) = scanner.take(Terminals::RBrace) {
+        let mut parse_err = ParseError::LexicalError(err); 
+        parse_err.context("Key closes with invalid character");
+        parse_err.possible("Maybe you meant '}'?");
+        return Err(parse_err);
+    }
     scanner.commit();
     Ok(ident)
 }
@@ -157,10 +177,27 @@ impl Symbol for char {
 }
 
 
-#[derive(thiserror::Error, Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct UserError {
+    parse_error: Box<ParseError>,
+    context: String,
+    possible: String,  // Info on the possible characters
+}
+
+impl std::error::Error for UserError {}
+
+impl std::fmt::Display for UserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "{}: {}\n{}", self.context, *self.parse_error, self.possible)
+    }
+}
+
+#[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
 pub enum ParseError {
-    #[error("Lexical Error: {0}")]
+    #[error("{0}")]
     LexicalError(#[from] ScanError),
+    #[error(transparent)]
+    UserError(#[from] UserError),
     #[error("Failed to parse the entire input")]
     NotFinished,
 }
@@ -189,4 +226,39 @@ impl ParseError {
             },
         }
     }
+
+    // Transforms `self` into a `ParseError::UserError` with the `UserErros`s `context`
+    // field set to the passed string 
+    fn context(&mut self, c: &str) {
+        match self {
+            ParseError::UserError(user_err) => {
+                    user_err.context = c.to_owned();
+            },
+            _ => {
+                let user_err = UserError {
+                    parse_error: Box::new(self.clone()),
+                    context: c.to_owned(),
+                    possible: "".to_owned(),
+                };
+                *self = ParseError::UserError(user_err);
+            },
+        }
+    }
+    // Same as `context` but for the `possible` field in `UserError`
+    fn possible(&mut self, p: &str) {
+        match self {
+            ParseError::UserError(user_err) => {
+                    user_err.possible = p.to_owned();
+            },
+            _ => {
+                let user_err = UserError {
+                    parse_error: Box::new(self.clone()),
+                    context: "".to_owned(),
+                    possible: p.to_owned(),
+                };
+                *self = ParseError::UserError(user_err);
+            },
+        }
+    } 
 }
+

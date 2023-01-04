@@ -24,6 +24,14 @@ mod tests {
     use crate::parse_str;
 
     #[test]
+    fn key_errors_are_correct() {
+        let cases = vec![
+            ("{nam$}", ""),
+        ];
+        helper::test_output_contents(parse::key, cases);
+    }
+
+    #[test]
     fn correct_keys_are_accepted() {
         let keys = vec!["{name}", "{NAME}", "{NaMe}", "{n}", "{N}", "{08nsf}"];
         helper::test_correct_variants(parse::key, keys);
@@ -36,8 +44,8 @@ mod tests {
             ("{name", "is missing right brace"),
             ("name}", "is missing left brace"),
             ("{&*(^)}", "contains invalid characters"),
-            ("{ /t/n}", "only contains whitespace charactes"),
-            ("{ /tsf/n}", "contains whitespace charactes"),
+            ("{ /t\n}", "only contains whitespace charactes"),
+            ("{ /tsf\n}", "contains whitespace charactes"),
         ];
         helper::test_incorrect_variants(parse::key, cases);
     }
@@ -201,6 +209,19 @@ mod tests {
                     variant,
                     case,
                 );            
+            }
+        }
+
+        pub fn test_output_contents<T: std::fmt::Debug>(
+            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
+            cases: Vec<(&str, &str)>,
+        ) {
+            for (input, expected) in cases {
+                let mut scanner = Scanner::new(&input);
+                let output = parse_fn(&mut scanner).unwrap_err().to_string();
+                dbg!(&output);
+                dbg!(expected);
+                assert!(output.contains(expected));
             }
         }
     }

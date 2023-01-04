@@ -100,7 +100,7 @@ impl Scanner {
                     found: character,
                     position: self.cursor.collapse(),
                 };
-                Err(ScanError::IncorrectSymbol(symbol))
+                Err(ScanError::UnexpectedSymbol(symbol))
             }
         } else {
             Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))            
@@ -142,7 +142,7 @@ impl Scanner {
                                 found: target,
                                 position: self.cursor.collapse(),
                             };
-                            break Err(ScanError::IncorrectSymbol(symbol))
+                            break Err(ScanError::UnexpectedSymbol(symbol))
                         } else {
                             break match request {
                                 true => Ok(sequence),
@@ -151,7 +151,7 @@ impl Scanner {
                                         found: target,
                                         position: self.cursor.collapse(),
                                     };
-                                    Err(ScanError::IncorrectSymbol(symbol))
+                                    Err(ScanError::UnexpectedSymbol(symbol))
                                 },
                             }
                         }
@@ -179,11 +179,11 @@ pub enum Action {
     Require,  // allows EBNF +
 }
 
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ScanError {
-    #[error("Incorrect Symbol {0}")]
-    IncorrectSymbol(UnexpectedSymbol),
-    #[error("Unexpected end of input reached at cursor {0}")]
+    #[error("{0}")]
+    UnexpectedSymbol(UnexpectedSymbol),
+    #[error("Unexpected end of input reached at position {0}")]
     UnexpectedEndOfInput(ErrorPosition),
 }
 
@@ -192,7 +192,7 @@ impl ScanError {
     // when the error was raised
     pub fn failed_after(&self) -> usize {
         let err_pos = match self {
-            ScanError::IncorrectSymbol(symbol) => {
+            ScanError::UnexpectedSymbol(symbol) => {
                 symbol.position
             },
             ScanError::UnexpectedEndOfInput(position) => *position,
@@ -204,14 +204,13 @@ impl ScanError {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct UnexpectedSymbol {
-    // expected: char,  // TODO
     found: char,
     position: ErrorPosition,
 }
 
 impl std::fmt::Display for UnexpectedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "Found character: '{}' at {}", self.found, self.position)
+        writeln!(f, "'{}' at position {}", self.found, self.position)
     }
 }
 
@@ -223,6 +222,6 @@ pub struct ErrorPosition {
 
 impl std::fmt::Display for ErrorPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "a:{}, b:{}", self.active, self.base)
+        writeln!(f, "{}", self.active)
     }
 }
