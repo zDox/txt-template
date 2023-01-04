@@ -2,6 +2,7 @@ use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
 
 // TODO: Thorough error bubbling and handling
+// TODO: Layer virtual cursors
 
 // template ::= ( <key> | <option> | <constant> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
@@ -25,6 +26,13 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
             if tokens.len() > 0 {
                 break Ok(tokens)
             } else {
+                // This is not sufficient: Errors should be propagated from the productio rules
+                // if none of the were successful. To now check which production rule did best,
+                // each error should carry how far it got with the virtual cursor. The one
+                // which got the furthest will be used to provide Error context. To be able
+                // to compare all rule's progess, each of them has to be in a virtual environment.
+                // This is true for all of them except for `key` because `key` might be called
+                // from an already virtual context. To solve this: Add virtual layers to the scanner (done).
                 break Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
             }
         }
@@ -77,11 +85,13 @@ pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
 // key ::= "{" <ident> "}"
 pub fn key(scanner: &mut Scanner) -> Result<Ident, ParseError> {
     // I don't now why not to use `begin`/`commit` here but it breaks the program
-    // scanner.begin();
+    // -> It did because there was only one layer of virtual cursors. Now layers
+    // are unlimited so `begin`/`commit` work here too.
+    scanner.begin();
     scanner.take(Terminals::LBrace)?;
     let ident = ident(scanner)?;
     scanner.take(Terminals::RBrace)?;
-    // scanner.commit();
+    scanner.commit();
     Ok(ident)
 }
 

@@ -1,53 +1,45 @@
 use crate::parse::Terminals;
 
-struct Cursor {
-    cursor: usize,
-    // `begin` and `commit` can be used before and after a set of scanning operations
-    // which logically belong together. This way if any one of the operation fails,
-    // the the actual cursor never changed
-    virt: Option<usize>,
-}
+// List of virtual cursors guaranteeing at last one cursor
+pub struct Cursor(Vec<usize>);
 
 impl Cursor {
-    fn new() -> Self {
-        Self {
-            cursor: 0,
-            virt: None,
+    pub fn new() -> Self {
+        Self(vec![0])
+    }
+
+    // Add a new active virtual layer
+    pub fn add(&mut self) {
+        let current = self.0.last().unwrap();
+        self.0.push(*current);
+    }
+
+    // Delete the active layer and set the layer below
+    // to it's position
+    pub fn merge(&mut self) {
+        if self.0.len() > 1 {
+            let current = self.0.pop().unwrap();
+            *self.0.last_mut().unwrap() = current;
         }
     }
 
-    pub fn begin(&mut self) {
-        self.virt = Some(self.cursor);
-    }
-
-    pub fn commit(&mut self) {
-        self.cursor = self.virt
-            .expect("Commit was called while not in virt mode");
-        self.virt = None;
-    }
-
-    // Get the currently active position
-    fn at(&self) -> usize {
-        if let Some(virt_cursor) = self.virt {
-            virt_cursor
-        } else {
-            self.cursor
+    // Delete the active layer
+    pub fn collapse(&mut self) {
+        if self.0.len() > 1 {
+            self.0.pop().unwrap();
         }
     }
 
-    fn inc(&mut self) {
-        if let Some(virt_cursor) = self.virt {
-            self.virt = Some(virt_cursor + 1);
-        } else {
-            self.cursor += 1;
-        }
+    // Get the position of the active layer
+    pub fn at(&self) -> usize {
+        dbg!(&self.0);
+        *self.0.last().unwrap()
     }
 
-    // Delete the virtual cursor
-    fn collapse(&mut self) {
-        if self.virt.is_some() {
-            self.virt = None;
-        }
+    // Increase the position of the active layer
+    pub fn inc(&mut self) {
+        let current = self.0.last_mut().unwrap();
+        *current += 1;
     }
 }
 
@@ -73,11 +65,11 @@ impl Scanner {
     }
 
     pub fn begin(&mut self) {
-        self.cursor.begin();
+        self.cursor.add();
     }
 
     pub fn commit(&mut self) {
-        self.cursor.commit();
+        self.cursor.merge();
     }
 
     fn current_char(&self) -> Option<char> {
