@@ -24,15 +24,26 @@ impl Cursor {
     }
 
     // Delete the active layer
-    pub fn collapse(&mut self) {
-        if self.0.len() > 1 {
-            self.0.pop().unwrap();
+    pub fn collapse(&mut self) -> ErrorPosition {
+        if self.0.len() > 2 {
+            let active = self.0.pop().unwrap();
+            // Second list element
+            let base = *self.0.get(self.0.len() - 2).unwrap();
+            ErrorPosition {
+                active,
+                base,
+            }
+        } else {
+            let active = *self.0.last().unwrap();
+            ErrorPosition {
+                active,
+                base: active,
+            }
         }
     }
 
     // Get the position of the active layer
     pub fn at(&self) -> usize {
-        dbg!(&self.0);
         *self.0.last().unwrap()
     }
 
@@ -85,12 +96,14 @@ impl Scanner {
                 self.cursor.inc();
                 Ok(())
             } else {
-                self.cursor.collapse();
-                Err(ScanError::IncorrectSymbol(character))
+                let symbol = UnexpectedSymbol{
+                    found: character,
+                    position: self.cursor.collapse(),
+                };
+                Err(ScanError::IncorrectSymbol(symbol))
             }
         } else {
-            self.cursor.collapse();
-            Err(ScanError::UnexpectedEndOfInput(self.cursor.at()))            
+            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))            
         }
     }
 
@@ -125,28 +138,32 @@ impl Scanner {
                             }
                         },
                         None => if require {
-                            self.cursor.collapse();
-                            break Err(ScanError::IncorrectSymbol(target))
+                            let symbol = UnexpectedSymbol{
+                                found: target,
+                                position: self.cursor.collapse(),
+                            };
+                            break Err(ScanError::IncorrectSymbol(symbol))
                         } else {
                             break match request {
                                 true => Ok(sequence),
                                 false => {
-                                    self.cursor.collapse();
-                                    Err(ScanError::IncorrectSymbol(target))
+                                    let symbol = UnexpectedSymbol{
+                                        found: target,
+                                        position: self.cursor.collapse(),
+                                    };
+                                    Err(ScanError::IncorrectSymbol(symbol))
                                 },
                             }
                         }
                     }
                 } 
                 None => if require {
-                    self.cursor.collapse();
-                    break Err(ScanError::UnexpectedEndOfInput(self.cursor.at()))
+                    break Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
                 } else {
                     break match request {
                         true => Ok(sequence),
                         false => {
-                            self.cursor.collapse();
-                            Err(ScanError::UnexpectedEndOfInput(self.cursor.at()))
+                            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
                         },
                     }
                 }
@@ -165,7 +182,47 @@ pub enum Action {
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum ScanError {
     #[error("Incorrect Symbol {0}")]
-    IncorrectSymbol(char),
+    IncorrectSymbol(UnexpectedSymbol),
     #[error("Unexpected end of input reached at cursor {0}")]
-    UnexpectedEndOfInput(usize),
+    UnexpectedEndOfInput(ErrorPosition),
+}
+
+impl ScanError {
+    // Difference between active and base cursor position 
+    // when the error was raised
+    pub fn failed_after(&self) -> usize {
+        let err_pos = match self {
+            ScanError::IncorrectSymbol(symbol) => {
+                symbol.position
+            },
+            ScanError::UnexpectedEndOfInput(position) => *position,
+        };
+
+        err_pos.active - err_pos.base
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct UnexpectedSymbol {
+    // expected: char,  // TODO
+    found: char,
+    position: ErrorPosition,
+}
+
+impl std::fmt::Display for UnexpectedSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "Found character: '{}' at {}", self.found, self.position)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ErrorPosition {
+    active: usize,
+    base: usize,
+}
+
+impl std::fmt::Display for ErrorPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "a:{}, b:{}", self.active, self.base)
+    }
 }

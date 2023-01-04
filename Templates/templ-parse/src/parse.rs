@@ -2,7 +2,6 @@ use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
 
 // TODO: Thorough error bubbling and handling
-// TODO: Layer virtual cursors
 
 // template ::= ( <key> | <option> | <constant> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
@@ -26,14 +25,19 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
             if tokens.len() > 0 {
                 break Ok(tokens)
             } else {
-                // This is not sufficient: Errors should be propagated from the productio rules
-                // if none of the were successful. To now check which production rule did best,
-                // each error should carry how far it got with the virtual cursor. The one
-                // which got the furthest will be used to provide Error context. To be able
-                // to compare all rule's progess, each of them has to be in a virtual environment.
-                // This is true for all of them except for `key` because `key` might be called
-                // from an already virtual context. To solve this: Add virtual layers to the scanner (done).
-                break Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
+                // We ended up here because none of the following rules returned ture, therefore
+                // it is save to unwrap all their erroneous results.
+                // We choose to return the result to the user which advanced the furthest into
+                // the source until it failed.
+                let best_attempt =
+                    key(scanner).unwrap_err().or_better(
+                        constant(scanner).unwrap_err().or_better(
+                            constant(scanner).unwrap_err().or_better(
+                                text(scanner).unwrap_err()
+                            )
+                        )
+                    );
+                break Err(best_attempt)
             }
         }
     }
@@ -57,7 +61,11 @@ pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
             break if !text.is_empty() {            
                 Ok(text)
             } else {
-                Err(ParseError::UnexpectedSymbol("insert symbol here".into()))
+                let best_attempt =
+                    ws(scanner).unwrap_err().or_better(
+                        characters(scanner).unwrap_err()
+                    );
+                Err(best_attempt)
             }
         }
     }
@@ -151,10 +159,34 @@ impl Symbol for char {
 
 #[derive(thiserror::Error, Debug, Eq, PartialEq)]
 pub enum ParseError {
-    #[error("Unexpected Symbol {0}")]
-    UnexpectedSymbol(String),
     #[error("Lexical Error: {0}")]
     LexicalError(#[from] ScanError),
     #[error("Failed to parse the entire input")]
     NotFinished,
+}
+
+impl ParseError {
+    // Get the `ParseError` instance which advanced further inside the source.
+    // Always returns `self` if non of the instances are `LexicalError`s.
+    // If both advanced the same distance `self` is returned too.
+    fn or_better(self, other: Self) -> Self {
+        match (&self, &other) {
+            (ParseError::LexicalError(self_err), ParseError::LexicalError(other_err)) => {
+                if self_err.failed_after() >= other_err.failed_after() {
+                    self
+                } else {
+                    other
+                }
+            },
+            (ParseError::LexicalError(_), _) => {
+                self
+            },
+            (_, ParseError::LexicalError(_)) => {
+                other
+            },
+            (_, _) => {
+                self
+            },
+        }
+    }
 }
