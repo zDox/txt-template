@@ -7,6 +7,8 @@ use crate::parse::ParseError;
 use crate::scan::Scanner;
 
 pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, ParseError> {
+    env_logger::init();
+
     let mut scanner = Scanner::new(s);
     let result = parse::template(&mut scanner)?;
     if scanner.at_end() {

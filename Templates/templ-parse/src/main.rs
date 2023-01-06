@@ -25,10 +25,15 @@ fn main() {
         },
     };
 
-    let display = env::var("DISPLAY").unwrap();
-    if &display == "true" {
-        println!("Input: \"{}\"\n", content);
-        println!("Output: \"{:#?}\"", tokens);
+    let mut args = env::args();
+    args.next();
+    if let Some(arg) = args.next() {
+        if arg == "--display" {
+            println!("Input: \"{}\"\n", content);
+            println!("Output: \"{:#?}\"", tokens);
+        } else {
+            println!("Unknown argument: Know arguments are --display");
+        }
     } else {
         print!(".");
     }

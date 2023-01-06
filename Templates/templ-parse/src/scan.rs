@@ -1,6 +1,8 @@
 use crate::parse::Terminals;
+use log::{debug, trace};
 
 // List of virtual cursors guaranteeing at last one cursor
+#[derive(Debug)]
 pub struct Cursor(Vec<usize>);
 
 impl Cursor {
@@ -25,16 +27,18 @@ impl Cursor {
 
     // Delete the active layer
     pub fn collapse(&mut self) -> ErrorPosition {
-        if self.0.len() > 2 {
+        debug!("Collapsing virtual cursor layer (before: {:?})", &self);
+        if self.0.len() > 1 {
             let active = self.0.pop().unwrap();
-            // Second list element
-            let base = *self.0.get(self.0.len() - 2).unwrap();
+            let base = *self.0.last().unwrap();
+            debug!("(after: {:?})", &self);
             ErrorPosition {
                 active,
                 base,
             }
         } else {
             let active = *self.0.last().unwrap();
+            debug!("(after: {:?})", &self);
             ErrorPosition {
                 active,
                 base: active,
@@ -44,6 +48,7 @@ impl Cursor {
 
     // Get the position of the active layer
     pub fn at(&self) -> usize {
+        trace!("Used {:?}", self);
         *self.0.last().unwrap()
     }
 
@@ -69,17 +74,21 @@ impl Scanner {
 
     pub fn at_end(&self) -> bool {
         if self.cursor.at() == self.chars.len() {
+            debug!("Scanner has reached the end");
             true
         } else {
+            debug!("Scanner has NOT reached the end");
             false
         }
     }
 
     pub fn begin(&mut self) {
+        debug!("Adding virtual cursor layer");
         self.cursor.add();
     }
 
     pub fn commit(&mut self) {
+        debug!("Comitting virtual cursor layer");
         self.cursor.merge();
     }
 
@@ -94,15 +103,18 @@ impl Scanner {
         if let Some(character) = self.current_char() {
             if terminal as u8 as char == character {
                 self.cursor.inc();
+                debug!("Took character '{}'  succesfully", terminal as u8 as char);
                 Ok(())
             } else {
                 let symbol = UnexpectedSymbol{
                     found: character,
                     position: self.cursor.collapse(),
                 };
+                debug!("Failed to take character: {}", &symbol);
                 Err(ScanError::UnexpectedSymbol(symbol))
             }
         } else {
+            debug!("Failed to take character '{}': Hit end of input", terminal as u8 as char);
             Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))            
         }
     }
@@ -124,16 +136,19 @@ impl Scanner {
                                     self.cursor.inc();
                                     require = false;
                                     request = true;
+                                    debug!("Requesting result after character '{}'", target);
                                 },
                                 // Return now
                                 Action::Return => {
-                                    self.cursor.inc();
+                                    self.cursor.inc();  // TODO: Should the cursor increase here?
+                                    debug!("Returning result after character '{}'", target);
                                     break Ok(sequence)
                                 },
                                 // Continue and return an error if next iteration fails
                                 Action::Require => {
                                     self.cursor.inc();
                                     require = true;
+                                    debug!("Requiring next character after '{}'", target);
                                 },
                             }
                         },
@@ -142,15 +157,20 @@ impl Scanner {
                                 found: target,
                                 position: self.cursor.collapse(),
                             };
+                            debug!("Failed to get required character: {}", &symbol);
                             break Err(ScanError::UnexpectedSymbol(symbol))
                         } else {
                             break match request {
-                                true => Ok(sequence),
+                                true => {
+                                    debug!("Returning result after failing to get new character on request");
+                                    Ok(sequence)
+                                },
                                 false => {
                                     let symbol = UnexpectedSymbol{
                                         found: target,
                                         position: self.cursor.collapse(),
                                     };
+                                    debug!("Failed to get new character while neither requiring nor requesting: {}", &symbol);
                                     Err(ScanError::UnexpectedSymbol(symbol))
                                 },
                             }
@@ -158,11 +178,16 @@ impl Scanner {
                     }
                 } 
                 None => if require {
+                    debug!("Hit end of input while requiring");
                     break Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
                 } else {
                     break match request {
-                        true => Ok(sequence),
+                        true => {
+                            debug!("Returning result after hitting end of input on request");
+                            Ok(sequence)
+                        },
                         false => {
+                            debug!("Hit end of input while neither requiring nor requesting");
                             Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
                         },
                     }

@@ -1,14 +1,18 @@
 use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
+use log::debug;
 
 // TODO: Display errors
 //     - info about possible correct characters if `scan` failed
 //        this has to come from a `parse` function because `scan`
 //        currently has now way to introspect the passed callback
 //     - info about correct characters is combinded with the attempted symbol
+// TODO: Add meta data tag at beginning of the template
+// TODO: Logging
 
-// template ::= ( <key> | <option> | <constant> )+
+// template ::= ( <key> | <option> | <constant> | <text> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
+    debug!("Starting template");
     let mut tokens: Vec<ContentToken> = Vec::new();
 
     loop {
@@ -27,6 +31,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
         } else {
             // Require at least one correct non-terminal to be found
             if tokens.len() > 0 {
+                debug!("Successfully finished template");
                 break Ok(tokens)
             } else {
                 // We ended up here because none of the following rules returned ture, therefore
@@ -41,6 +46,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
                             )
                         )
                     );
+                debug!("Failed to finish template: returning best attempt");
                 break Err(best_attempt)
             }
         }
@@ -51,6 +57,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
 // <ws>   ::= (" " | "\t" | "\n")+
 // <chars> ::= ([A-Z] | [a-z])+
 pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
+    debug!("Starting text");
     let mut text = String::new();
 
     return loop {
@@ -63,12 +70,14 @@ pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
         } else {
             // Return the text once no valid characters can be found
             break if !text.is_empty() {            
+                debug!("Successfully finished text");
                 Ok(text)
             } else {
                 let best_attempt =
                     ws(scanner).unwrap_err().or_better(
                         characters(scanner).unwrap_err()
                     );
+                debug!("Failed to finish text: returning best attempt");
                 Err(best_attempt)
             }
         }
@@ -77,20 +86,36 @@ pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
 
 // <ws> ::= (" " | "\t" | "\n")+
 pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
-    let ws_chars = scanner.scan(|symbol| match symbol {
+    debug!("Starting whitespace");
+    let ws_chars = match scanner.scan(|symbol| match symbol {
         ' ' | '\t' | '\n' => Some(Action::Request),
         _ => None,
-    })?;
+    }) {
+        Ok(chars) => chars,
+        Err(e) => {
+            debug!("Failed to finish whitespace");
+            return Err(ParseError::LexicalError(e));
+        },
+    };
+    debug!("Succesfully finished whitespace");
     Ok(ws_chars)
 }
 
 // <chars> ::= ([A-Z] | [a-z])
 pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
-    let chars = scanner.scan(|symbol| if symbol.is_terminal() {
+    debug!("Starting characters");
+    let chars = match scanner.scan(|symbol| if symbol.is_terminal() {
             None
         } else {
             Some(Action::Request)
-    })?;
+    }) {
+        Ok(chars) => chars,
+        Err(e) => {
+            debug!("Failed to finish charactes");
+            return Err(ParseError::LexicalError(e));
+        }
+    };
+    debug!("Successfully finished characters");
     Ok(chars)
 }
 
@@ -99,60 +124,96 @@ pub fn key(scanner: &mut Scanner) -> Result<Ident, ParseError> {
     // I don't now why not to use `begin`/`commit` here but it breaks the program
     // -> It did because there was only one layer of virtual cursors. Now layers
     // are unlimited so `begin`/`commit` work here too.
+    debug!("Starting key");
     scanner.begin();
     if let Err(err) = scanner.take(Terminals::LBrace) {
+        debug!("Failed to finish key (Missing LBrace)");
         let mut parse_err = ParseError::LexicalError(err); 
-        parse_err.context("Key closes with invalid character");
+        parse_err.context("Key starts with invalid character");
         parse_err.possible("Maybe you meant '{'?");
         return Err(parse_err);
     }
     let ident = match ident(scanner) {
         Ok(ident) => ident,
         Err(mut err) => {
+            debug!("Failed to finish key (incorrect ident)");
             err.context("Identifier for key contains an invalid character");
             return Err(err);
         },
     };
     if let Err(err) = scanner.take(Terminals::RBrace) {
+        debug!("Failed to finish key (Missing RBrace)");
         let mut parse_err = ParseError::LexicalError(err); 
         parse_err.context("Key closes with invalid character");
         parse_err.possible("Maybe you meant '}'?");
         return Err(parse_err);
     }
     scanner.commit();
+    debug!("Successfully finished key");
     Ok(ident)
 }
 
 // <ident> ::= (<char> | [0-9])+
 // <char> ::= ([A-Z] | [a-z])   
 pub fn ident(scanner: &mut Scanner) -> Result<Ident, ParseError> {
-    let ident = scanner.scan(|symbol| match symbol as u8 {
+    debug!("Starting ident");
+    let ident = match scanner.scan(|symbol| match symbol as u8 {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => Some(Action::Request),
         _ => None,
-    })?;
+    }) {
+        Ok(ident) => ident,
+        Err(e) => {
+            debug!("Failed to finish ident");
+            return Err(ParseError::LexicalError(e));
+        }
+    };
+    debug!("Successfully finished ident");
     Ok(Ident::from(ident))  // at some point return the ident itself instead
 }
 
 // <option> ::= "$" <key>
 pub fn option(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    debug!("Starting options");
     scanner.begin();
-    scanner.take(Terminals::Cash)?;
-    let ident = key(scanner)?;
+    if let Err(e) = scanner.take(Terminals::Cash) {
+        debug!("Failed to finish options (Missing Cash)");
+        return Err(ParseError::LexicalError(e));
+    }
+    let ident = match key(scanner) {
+        Ok(ident) => ident,
+        Err(e) => {
+            debug!("Failed to finish options (incorrect ident)");
+            return Err(e);
+        },
+    };
     scanner.commit();
+    debug!("Successfully finished option");
     Ok(ident)
 }
 
 // <constant> ::= "$" <ident>
 pub fn constant(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+    debug!("Starting constant");
     scanner.begin();
-    scanner.take(Terminals::Cash)?;
-    let ident = ident(scanner)?;
+    if let Err(e) = scanner.take(Terminals::Cash) {
+        debug!("Failed to finish constant (Missing Cash)");
+        return Err(ParseError::LexicalError(e));
+    }
+    let ident = match ident(scanner) {
+        Ok(ident) => ident,
+        Err(e) => {
+            debug!("Failed to finish constant (incorrect ident)");
+            return Err(e);
+        }
+    };
     scanner.commit();
+    debug!("Successfully finished constant");
     Ok(ident)    
 }
 
 // Terminal-symbol representation
 #[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Terminals {
     LBrace = b'{',
     RBrace = b'}',
