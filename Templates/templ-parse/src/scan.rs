@@ -26,7 +26,8 @@ impl Cursor {
     }
 
     // Delete the active layer
-    pub fn collapse(&mut self) -> ErrorPosition {
+    // requires the source for the scanner so it can get the positon as lines
+    pub fn collapse(&mut self, s: &Vec<char>) -> ErrorPosition {
         debug!("Collapsing virtual cursor layer (before: {:?})", &self);
         if self.0.len() > 1 {
             let active = self.0.pop().unwrap();
@@ -35,6 +36,7 @@ impl Cursor {
             ErrorPosition {
                 active,
                 base,
+                lines: s.as_lines(active),
             }
         } else {
             let active = *self.0.last().unwrap();
@@ -42,6 +44,7 @@ impl Cursor {
             ErrorPosition {
                 active,
                 base: active,
+                lines: s.as_lines(active),
             }
         }
     }
@@ -108,14 +111,14 @@ impl Scanner {
             } else {
                 let symbol = UnexpectedSymbol{
                     found: character,
-                    position: self.cursor.collapse(),
+                    position: self.cursor.collapse(&self.chars),
                 };
                 debug!("Failed to take character: {}", &symbol);
                 Err(ScanError::UnexpectedSymbol(symbol))
             }
         } else {
             debug!("Failed to take character '{}': Hit end of input", terminal as u8 as char);
-            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))            
+            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))            
         }
     }
 
@@ -155,7 +158,7 @@ impl Scanner {
                         None => if require {
                             let symbol = UnexpectedSymbol{
                                 found: target,
-                                position: self.cursor.collapse(),
+                                position: self.cursor.collapse(&self.chars),
                             };
                             debug!("Failed to get required character: {}", &symbol);
                             break Err(ScanError::UnexpectedSymbol(symbol))
@@ -168,7 +171,7 @@ impl Scanner {
                                 false => {
                                     let symbol = UnexpectedSymbol{
                                         found: target,
-                                        position: self.cursor.collapse(),
+                                        position: self.cursor.collapse(&self.chars),
                                     };
                                     debug!("Failed to get new character while neither requiring nor requesting: {}", &symbol);
                                     Err(ScanError::UnexpectedSymbol(symbol))
@@ -179,7 +182,7 @@ impl Scanner {
                 } 
                 None => if require {
                     debug!("Hit end of input while requiring");
-                    break Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
+                    break Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))
                 } else {
                     break match request {
                         true => {
@@ -188,12 +191,35 @@ impl Scanner {
                         },
                         false => {
                             debug!("Hit end of input while neither requiring nor requesting");
-                            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse()))
+                            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))
                         },
                     }
                 }
             }
         }
+    }
+}
+
+trait PosAsLines {
+    fn as_lines(&self, pos: usize) -> (usize, usize);
+}
+
+impl PosAsLines for Vec<char> {
+    // Convert a position in the string into the
+    // corresponding position as lines and columns.
+    // Lines and columns both start with 1 as the lowest value.
+    fn as_lines(&self, pos: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut column = 1;
+        for character in self.iter().take(pos) {
+            if *character == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+        (line, column)
     }
 }
 
@@ -235,7 +261,7 @@ pub struct UnexpectedSymbol {
 
 impl std::fmt::Display for UnexpectedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "'{}' at column {}", self.found, self.position)
+        write!(f, "'{}' at {}", self.found, self.position)
     }
 }
 
@@ -243,11 +269,11 @@ impl std::fmt::Display for UnexpectedSymbol {
 pub struct ErrorPosition {
     active: usize,
     base: usize,
+    lines: (usize, usize),
 }
 
 impl std::fmt::Display for ErrorPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        // TODO: Differantiate between columns and lines
-        write!(f, "{}", self.active + 1)
+        write!(f, "line {}, column {}", self.lines.0, self.lines.1)
     }
 }
