@@ -235,7 +235,7 @@ pub struct UnexpectedSymbol {
 
 impl std::fmt::Display for UnexpectedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "'{}' at position {}", self.found, self.position)
+        write!(f, "'{}' at column {}", self.found, self.position)
     }
 }
 
@@ -247,6 +247,7 @@ pub struct ErrorPosition {
 
 impl std::fmt::Display for ErrorPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "{}", self.active)
+        // TODO: Differantiate between columns and lines
+        write!(f, "{}", self.active + 1)
     }
 }

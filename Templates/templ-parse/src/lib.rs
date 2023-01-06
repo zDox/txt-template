@@ -3,18 +3,23 @@ pub mod scan;
 pub mod token;
 
 use crate::token::ContentToken;
-use crate::parse::ParseError;
+use crate::parse::{ParseError, UserError};
 use crate::scan::Scanner;
+use once_cell::sync::Lazy;
 
-pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, ParseError> {
+static LOGGING: Lazy<()> = Lazy::new(|| {
     env_logger::init();
+});
 
+pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, UserError> {
+    Lazy::force(&LOGGING);
+   
     let mut scanner = Scanner::new(s);
     let result = parse::template(&mut scanner)?;
     if scanner.at_end() {
         Ok(result)
     } else {
-        Err(ParseError::NotFinished)
+        Err(ParseError::NotFinished.into())
     }
 }
 
@@ -189,20 +194,26 @@ mod tests {
     mod helper {
         use super::*;
 
-        pub fn test_correct_variants<T: std::fmt::Debug>(
-            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
+        pub fn test_correct_variants<T, E>(
+            parse_fn: fn(&mut Scanner) -> Result<T, E>,
             variants: Vec<&str>,
-        ) {
+        )
+        where
+            T: std::fmt::Debug, E: std::error::Error
+        {
             for variant in variants {
                 let mut scanner = Scanner::new(&variant);
                 assert!(parse_fn(&mut scanner).is_ok());
             }
         }
 
-        pub fn test_incorrect_variants<T: std::fmt::Debug>(
-            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
+        pub fn test_incorrect_variants<T, E>(
+            parse_fn: fn(&mut Scanner) -> Result<T, E>,
             cases: Vec<(&str, &str)>,
-        ) {
+        )
+        where
+            T: std::fmt::Debug, E: std::error::Error
+        {
             for (variant, case) in cases {
                 let mut scanner = Scanner::new(&variant);
                 assert!(
@@ -214,10 +225,13 @@ mod tests {
             }
         }
 
-        pub fn test_output_contents<T: std::fmt::Debug>(
-            parse_fn: fn(&mut Scanner) -> Result<T, parse::ParseError>,
+        pub fn test_output_contents<T, E>(
+            parse_fn: fn(&mut Scanner) -> Result<T, E>,
             cases: Vec<(&str, &str)>,
-        ) {
+        )
+        where
+            T: std::fmt::Debug, E: std::error::Error
+        {
             for (input, expected) in cases {
                 let mut scanner = Scanner::new(&input);
                 let output = parse_fn(&mut scanner).unwrap_err().to_string();

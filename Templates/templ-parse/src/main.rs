@@ -3,6 +3,7 @@ use templ_parse::parse_str;
 use std::io::{Read, self};
 use std::env;
 use std::process;
+use log::debug;
 
 fn main() {
     let stdin = io::stdin();
@@ -19,7 +20,7 @@ fn main() {
     let tokens = match parse_str(&content) {
         Ok(tokens) => tokens,
         Err(err) => {
-            dbg!(&err);
+            debug!("{}", &err);
             eprintln!("{}", err);
             process::exit(1);
         },

@@ -2,16 +2,18 @@ use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
 use log::debug;
 
-// TODO: Display errors
+// TODO: Display errors (next: add context to all errors)
 //     - info about possible correct characters if `scan` failed
 //        this has to come from a `parse` function because `scan`
 //        currently has now way to introspect the passed callback
 //     - info about correct characters is combinded with the attempted symbol
 // TODO: Add meta data tag at beginning of the template
-// TODO: Logging
+// TODO: use transform to check for next rule instead of just trying all of them
+//     - using a transform offers more certainty
+// TODO: Logging (done for now)
 
 // template ::= ( <key> | <option> | <constant> | <text> )+
-pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> {
+pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
     debug!("Starting template");
     let mut tokens: Vec<ContentToken> = Vec::new();
 
@@ -57,7 +59,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
 // <text> ::= (<chars> | <ws>)+
 // <ws>   ::= (" " | "\t" | "\n")+
 // <chars> ::= ([A-Z] | [a-z])+
-pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
+pub fn text(scanner: &mut Scanner) -> Result<String, UserError> {
     debug!("Starting text");
     let mut text = String::new();
 
@@ -86,7 +88,7 @@ pub fn text(scanner: &mut Scanner) -> Result<String, ParseError> {
 }
 
 // <ws> ::= (" " | "\t" | "\n")+
-pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
+pub fn ws(scanner: &mut Scanner) -> Result<String, UserError> {
     debug!("Starting whitespace");
     let ws_chars = match scanner.scan(|symbol| match symbol {
         ' ' | '\t' | '\n' => Some(Action::Request),
@@ -95,7 +97,12 @@ pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
         Ok(chars) => chars,
         Err(e) => {
             debug!("Failed to finish whitespace");
-            return Err(ParseError::LexicalError(e));
+            let e = UserError {
+                parse_error: ParseError::LexicalError(e),
+                context: ContextMsg::InvalidContainedIn("whitespace section".to_owned()),
+                possible: PossibleMsg::AllowedAre("'\\n', '\\t' or ' '".to_owned()),
+            };
+            return Err(e);
         },
     };
     debug!("Succesfully finished whitespace");
@@ -103,7 +110,7 @@ pub fn ws(scanner: &mut Scanner) -> Result<String, ParseError> {
 }
 
 // <chars> ::= ([A-Z] | [a-z])
-pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
+pub fn characters(scanner: &mut Scanner) -> Result<String, UserError> {
     debug!("Starting characters");
     let chars = match scanner.scan(|symbol| if symbol.is_terminal() {
             None
@@ -113,7 +120,12 @@ pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
         Ok(chars) => chars,
         Err(e) => {
             debug!("Failed to finish charactes");
-            return Err(ParseError::LexicalError(e));
+            let e = UserError {
+                parse_error: ParseError::LexicalError(e),
+                context: ContextMsg::InvalidContainedIn("text section".to_owned()),
+                possible: PossibleMsg::ForbiddenAre("'{', '}' or '$' ".to_owned()),
+            };
+            return Err(e);
         }
     };
     debug!("Successfully finished characters");
@@ -121,33 +133,38 @@ pub fn characters(scanner: &mut Scanner) -> Result<String, ParseError> {
 }
 
 // key ::= "{" <ident> "}"
-pub fn key(scanner: &mut Scanner) -> Result<Ident, ParseError> {
-    // I don't now why not to use `begin`/`commit` here but it breaks the program
-    // -> It did because there was only one layer of virtual cursors. Now layers
-    // are unlimited so `begin`/`commit` work here too.
+pub fn key(scanner: &mut Scanner) -> Result<Ident, UserError> {
     debug!("Starting key");
     scanner.begin();
-    if let Err(err) = scanner.take(Terminals::LBrace) {
+    if let Err(e) = scanner.take(Terminals::LBrace) {
         debug!("Failed to finish key (Missing LBrace)");
-        let mut parse_err = ParseError::LexicalError(err); 
-        parse_err.context("Key starts with invalid character");
-        parse_err.possible("Maybe you meant '{'?");
-        return Err(parse_err);
+        let e = UserError {
+            parse_error: ParseError::LexicalError(e),
+            context: ContextMsg::InvalidOpeningOf("key".to_owned()),
+            possible: PossibleMsg::DidYouMean("{".to_owned()),
+        };
+        return Err(e);
     }
     let ident = match ident(scanner) {
         Ok(ident) => ident,
-        Err(mut err) => {
+        Err(e) => {
             debug!("Failed to finish key (incorrect ident)");
-            err.context("Identifier for key contains an invalid character");
-            return Err(err);
+            let e = UserError {
+                parse_error: e,
+                context: ContextMsg::InvalidContainedIn("identifier of key".to_owned()),
+                possible: PossibleMsg::AllowedAre("'A'-'Z', 'a'-'z' and '0'-'9'".to_owned()),
+            };
+            return Err(e);
         },
     };
-    if let Err(err) = scanner.take(Terminals::RBrace) {
+    if let Err(e) = scanner.take(Terminals::RBrace) {
         debug!("Failed to finish key (Missing RBrace)");
-        let mut parse_err = ParseError::LexicalError(err); 
-        parse_err.context("Key closes with invalid character");
-        parse_err.possible("Maybe you meant '}'?");
-        return Err(parse_err);
+        let e = UserError {
+            parse_error: ParseError::LexicalError(e),
+            context: ContextMsg::InvalidClosingOf("key".to_owned()),
+            possible: PossibleMsg::DidYouMean("}".to_owned()),
+        };
+        return Err(e);
     }
     scanner.commit();
     debug!("Successfully finished key");
@@ -173,17 +190,23 @@ pub fn ident(scanner: &mut Scanner) -> Result<Ident, ParseError> {
 }
 
 // <option> ::= "$" <key>
-pub fn option(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+pub fn option(scanner: &mut Scanner) -> Result<Ident, UserError> {
     debug!("Starting options");
     scanner.begin();
     if let Err(e) = scanner.take(Terminals::Cash) {
         debug!("Failed to finish options (Missing Cash)");
-        return Err(ParseError::LexicalError(e));
+        let e = UserError {
+            parse_error: ParseError::LexicalError(e),
+            context: ContextMsg::InvalidOpeningOf("option".to_owned()),
+            possible: PossibleMsg::DidYouMean("$".to_owned()),
+        };
+        return Err(e);
     }
     let ident = match key(scanner) {
         Ok(ident) => ident,
-        Err(e) => {
+        Err(mut e) => {
             debug!("Failed to finish options (incorrect ident)");
+            e.context = ContextMsg::InvalidContainedIn("identifier of option".to_owned());
             return Err(e);
         },
     };
@@ -193,17 +216,27 @@ pub fn option(scanner: &mut Scanner) -> Result<Ident, ParseError> {
 }
 
 // <constant> ::= "$" <ident>
-pub fn constant(scanner: &mut Scanner) -> Result<Ident, ParseError> {
+pub fn constant(scanner: &mut Scanner) -> Result<Ident, UserError> {
     debug!("Starting constant");
     scanner.begin();
     if let Err(e) = scanner.take(Terminals::Cash) {
         debug!("Failed to finish constant (Missing Cash)");
-        return Err(ParseError::LexicalError(e));
+        let e = UserError {
+            parse_error: ParseError::LexicalError(e),
+            context: ContextMsg::InvalidOpeningOf("constant".to_owned()),
+            possible: PossibleMsg::DidYouMean("$".to_owned()),
+        };
+        return Err(e);
     }
     let ident = match ident(scanner) {
         Ok(ident) => ident,
         Err(e) => {
             debug!("Failed to finish constant (incorrect ident)");
+            let e = UserError {
+                parse_error: e,
+                context: ContextMsg::InvalidContainedIn("identifer of constant".to_owned()),
+                possible: PossibleMsg::AllowedAre("'A'-'Z', 'a'-'z' and '0'-'9'".to_owned()),
+            };
             return Err(e);
         }
     };
@@ -241,16 +274,107 @@ impl Symbol for char {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UserError {
-    parse_error: Box<ParseError>,
-    context: String,
-    possible: String,  // Info on the possible characters
+    parse_error: ParseError,
+    context: ContextMsg,
+    possible: PossibleMsg,  // Info on the possible characters
+}
+
+impl UserError {
+    // Get the `ParseError` instance which advanced further inside the source.
+    // Always returns `self` if non of the instances are `LexicalError`s.
+    // If both advanced the same distance `self` is returned too.
+    fn or_better(self, other: Self) -> Self {
+        debug!("Choosing best attempt from: self={:?}, other={:?}", &self.parse_error, &other.parse_error);
+        match (&self.parse_error, &other.parse_error) {
+            (ParseError::LexicalError(self_err), ParseError::LexicalError(other_err)) => {
+                if self_err.failed_after() >= other_err.failed_after() {
+                    self
+                } else {
+                    other
+                }
+            },
+            (ParseError::LexicalError(_), _) => {
+                self
+            },
+            (_, ParseError::LexicalError(_)) => {
+                other
+            },
+            (_, _) => {
+                self
+            },
+        }
+    }
 }
 
 impl std::error::Error for UserError {}
 
 impl std::fmt::Display for UserError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "{}: {}\n{}", self.context, *self.parse_error, self.possible)
+        write!(f, "{}: {}\n{}", self.context, self.parse_error, self.possible)
+    }
+}
+
+impl From<ParseError> for UserError {
+    fn from(parse_error: ParseError) -> Self {
+        Self {
+            parse_error,
+            context: ContextMsg::None,
+            possible: PossibleMsg::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ContextMsg {
+    InvalidContainedIn(String),  // Invalid  character(s) conatined in {identifier for key}
+    InvalidOpeningOf(String),  // Invalid opening character of {key}
+    InvalidClosingOf(String),  // Invalid closing character of {key}
+    None,
+}
+
+impl std::fmt::Display for ContextMsg {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ContextMsg::InvalidContainedIn(target) => {
+                write!(f, "Found invalid character(s) contained in {}", target)
+            },
+            ContextMsg::InvalidOpeningOf(target) => {
+                write!(f, "Found invalid opening character for {}", target)
+            },
+            ContextMsg::InvalidClosingOf(target) => {
+                write!(f, "Found invalid closing character for {}", target)
+            },
+            ContextMsg::None => {
+                write!(f, "")
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PossibleMsg {
+    DidYouMean(String),
+    AllowedAre(String),
+    ForbiddenAre(String),
+    None,
+}
+
+impl std::fmt::Display for PossibleMsg {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PossibleMsg::DidYouMean(maybe) => {
+                write!(f, "Did you maybe mean '{}'?", maybe)
+            },
+            PossibleMsg::AllowedAre(allowed) => {
+                write!(f, "Allowed characters are {}", allowed)
+            },
+            PossibleMsg::ForbiddenAre(forbidden) => {
+                write!(f, "Forbidden characters are {}", forbidden)
+            },
+            PossibleMsg::None => {
+                write!(f, "")
+            },
+        }
     }
 }
 
@@ -258,77 +382,7 @@ impl std::fmt::Display for UserError {
 pub enum ParseError {
     #[error("{0}")]
     LexicalError(#[from] ScanError),
-    #[error(transparent)]
-    UserError(#[from] UserError),
     #[error("Failed to parse the entire input")]
     NotFinished,
-}
-
-impl ParseError {
-    // Get the `ParseError` instance which advanced further inside the source.
-    // Always returns `self` if non of the instances are `LexicalError`s.
-    // If both advanced the same distance `self` is returned too.
-    fn or_better(self, other: Self) -> Self {
-        debug!("Choosing best attempt from: self={:?}, other={:?}", &self, &other);
-        // Extract user errors
-        let self_parse_err = if let ParseError::UserError(UserError{parse_error, context: _, possible: _}) = self {
-            *parse_error
-        } else { self };
-        let other_parse_err = if let ParseError::UserError(UserError{parse_error, context: _, possible: _}) = other {
-            *parse_error
-        } else { other };
-        match (&self_parse_err, &other_parse_err) {
-            (ParseError::LexicalError(self_scan_err), ParseError::LexicalError(other_scan_err)) => {
-                if self_scan_err.failed_after() >= other_scan_err.failed_after() {
-                    self_parse_err
-                } else {
-                    other_parse_err
-                }
-            },
-            (ParseError::LexicalError(_), _) => {
-                self_parse_err
-            },
-            (_, ParseError::LexicalError(_)) => {
-                other_parse_err
-            },
-            (_, _) => {
-                self_parse_err
-            },
-        }
-    }
-
-    // Transforms `self` into a `ParseError::UserError` with the `UserErros`s `context`
-    // field set to the passed string 
-    fn context(&mut self, c: &str) {
-        match self {
-            ParseError::UserError(user_err) => {
-                    user_err.context = c.to_owned();
-            },
-            _ => {
-                let user_err = UserError {
-                    parse_error: Box::new(self.clone()),
-                    context: c.to_owned(),
-                    possible: "".to_owned(),
-                };
-                *self = ParseError::UserError(user_err);
-            },
-        }
-    }
-    // Same as `context` but for the `possible` field in `UserError`
-    fn possible(&mut self, p: &str) {
-        match self {
-            ParseError::UserError(user_err) => {
-                    user_err.possible = p.to_owned();
-            },
-            _ => {
-                let user_err = UserError {
-                    parse_error: Box::new(self.clone()),
-                    context: "".to_owned(),
-                    possible: p.to_owned(),
-                };
-                *self = ParseError::UserError(user_err);
-            },
-        }
-    } 
 }
 
