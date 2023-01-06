@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Usage: DISPLAY=true ./random-gens.sh 20000 grammar.bnf ../target/debug/templ-parse
+# Usage: DISPLAY=true ./random-gens.sh 20000 grammar.bnf ../target/debug/test
 
 set -eo pipefail
 set -e

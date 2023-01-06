@@ -2,15 +2,14 @@ use crate::scan::{Scanner, ScanError, Action};
 use crate::token::{ContentToken, Ident};
 use log::debug;
 
-// TODO: Display errors (next: add context to all errors)
-//     - info about possible correct characters if `scan` failed
-//        this has to come from a `parse` function because `scan`
-//        currently has now way to introspect the passed callback
-//     - info about correct characters is combinded with the attempted symbol
 // TODO: Add meta data tag at beginning of the template
 // TODO: use transform to check for next rule instead of just trying all of them
 //     - using a transform offers more certainty
-// TODO: Logging (done for now)
+// TODO: Remove the `NotFinished`-mechanism! It is a lazy way to not scan for
+// and decide on the next valid token.
+// If "{" is scanned the next token is a key
+// If "${" is scanned the next token is an option
+// If "$" is scanned the next token is a constant
 
 // template ::= ( <key> | <option> | <constant> | <text> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
