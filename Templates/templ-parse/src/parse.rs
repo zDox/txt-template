@@ -38,6 +38,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
                 // it is save to unwrap all their erroneous results.
                 // We choose to return the result to the user which advanced the furthest into
                 // the source until it failed.
+                debug!("Failed to finish template: searching for best attempt");
                 let best_attempt =
                     key(scanner).unwrap_err().or_better(
                         constant(scanner).unwrap_err().or_better(
@@ -46,7 +47,7 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, ParseError> 
                             )
                         )
                     );
-                debug!("Failed to finish template: returning best attempt");
+                debug!("Failed to finish template: returning best attempt: {:?}", &best_attempt);
                 break Err(best_attempt)
             }
         }
@@ -268,22 +269,30 @@ impl ParseError {
     // Always returns `self` if non of the instances are `LexicalError`s.
     // If both advanced the same distance `self` is returned too.
     fn or_better(self, other: Self) -> Self {
-        match (&self, &other) {
-            (ParseError::LexicalError(self_err), ParseError::LexicalError(other_err)) => {
-                if self_err.failed_after() >= other_err.failed_after() {
-                    self
+        debug!("Choosing best attempt from: self={:?}, other={:?}", &self, &other);
+        // Extract user errors
+        let self_parse_err = if let ParseError::UserError(UserError{parse_error, context: _, possible: _}) = self {
+            *parse_error
+        } else { self };
+        let other_parse_err = if let ParseError::UserError(UserError{parse_error, context: _, possible: _}) = other {
+            *parse_error
+        } else { other };
+        match (&self_parse_err, &other_parse_err) {
+            (ParseError::LexicalError(self_scan_err), ParseError::LexicalError(other_scan_err)) => {
+                if self_scan_err.failed_after() >= other_scan_err.failed_after() {
+                    self_parse_err
                 } else {
-                    other
+                    other_parse_err
                 }
             },
             (ParseError::LexicalError(_), _) => {
-                self
+                self_parse_err
             },
             (_, ParseError::LexicalError(_)) => {
-                other
+                other_parse_err
             },
             (_, _) => {
-                self
+                self_parse_err
             },
         }
     }
