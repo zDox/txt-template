@@ -4,52 +4,15 @@ use log::debug;
 
 // TODO: Add meta data tag at beginning of the template
 
-// template ::= ( <key> | <option> | <constant> | <text> )+
+// template ::= <meta> <item>+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
     debug!("Starting template");
     let mut tokens: Vec<ContentToken> = Vec::new();
 
     let e = loop {
-        scanner.begin();
-        let sequence = scanner.scan_str(|sequence| match sequence {
-            "${" => Some(Action::Return),
-            "$" => Some(Action::Require('{')),
-            "{" => Some(Action::Return),
-            _ => Some(Action::Return),
-        });
-        scanner.abort();
-
-        debug!("Sequence: {:?}", &sequence);
-        match sequence {
-            Ok(sequence) => {
-                tokens.push(match sequence.as_str() {
-                    "${" => match option(scanner) {
-                        Ok(ident) => ContentToken::Option(ident),
-                        Err(e) => break(e),
-                    },
-                    "$" => match constant(scanner) {
-                        Ok(ident) => ContentToken::Constant(ident),
-                        Err(e) => break(e),
-                    },
-                    "{" => match key(scanner) {
-                        Ok(ident) => ContentToken::Key(ident),
-                        Err(e) => break(e),
-                    },
-                    _ => match text(scanner) {
-                        Ok(text) => {
-                            // alt: `text.insert_str(0, &sequence)`
-                            // sequence.push_str(&text);
-                            ContentToken::Text(text)
-                        },
-                        Err(e) => break(e),
-                    }
-                })
-            },
-            Err(e) => break(UserError {
-                    parse_error: ParseError::LexicalError(e),
-                    context: ContextMsg::EmptyInput,
-                    possible: PossibleMsg::None,
-            }),
+        match item(scanner) {
+            Ok(token) => tokens.push(token),
+            Err(e) => break e,
         }
     };
 
@@ -57,6 +20,48 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
         Ok(tokens)
     } else {
         Err(e)
+    }
+}
+
+// <item> ::= <key> | <option> | <constant> | <text>
+pub fn item(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
+    scanner.begin();
+    let sequence = scanner.scan_str(|sequence| match sequence {
+        "${" => Some(Action::Return),
+        "$" => Some(Action::Require('{')),
+        "{" => Some(Action::Return),
+        _ => Some(Action::Return),
+    });
+    scanner.abort();
+
+    debug!("Sequence: {:?}", &sequence);
+
+    match sequence {
+        Ok(sequence) => {
+            match sequence.as_str() {
+                "${" => match option(scanner) {
+                    Ok(ident) => Ok(ContentToken::Option(ident)),
+                    Err(e) => Err(e),
+                },
+                "$" => match constant(scanner) {
+                    Ok(ident) => Ok(ContentToken::Constant(ident)),
+                    Err(e) => Err(e),
+                },
+                "{" => match key(scanner) {
+                    Ok(ident) => Ok(ContentToken::Key(ident)),
+                    Err(e) => Err(e),
+                },
+                _ => match text(scanner) {
+                    Ok(text) => Ok(ContentToken::Text(text)),
+                    Err(e) => Err(e),
+                }
+            }
+        },
+        Err(e) => Err(UserError {
+                parse_error: ParseError::LexicalError(e),
+                context: ContextMsg::EmptyInput,
+                possible: PossibleMsg::None,
+        }),
     }
 }
 

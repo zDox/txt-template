@@ -38,7 +38,7 @@ fn invalid_idents() {
 #[test]
 fn invalid_text() {
     assert_out("$bla}", vec![CONTAINS, ALLOWED, TEXT]);
-    assert_out("blalbla}bla", vec![CONTAINS, FORBIDDEN, TEXT]);
+    assert_out("blalbla}bla", vec![CONTAINS, ALLOWED, TEXT]);
 }
 
 #[test]
