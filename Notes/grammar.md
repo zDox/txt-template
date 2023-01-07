@@ -21,8 +21,8 @@ Bar
 ```
 
 ## EBNF grammar
-<template> ::= <meta> <item>+
-<meta> 	   ::= /* TODO */
+<template> ::= <locale>? <item>+
+<locale>   ::= <chars> "\n"
 <item> 	   ::= <text> | <key> | <option> | <constant>
 <text>     ::= (<chars> | <ws>)+
 <key>      ::= "{" <ident> <default>? "}"

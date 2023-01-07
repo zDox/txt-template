@@ -1,14 +1,20 @@
 use crate::scan::{Scanner, ScanError, Action};
-use crate::token::{ContentToken, Ident};
+use crate::token::{ContentTokens, ContentToken, Ident};
 use log::debug;
+use unic_locale::Locale;
 
-// TODO: Add meta data tag at beginning of the template
-
-// template ::= <meta> <item>+
-pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
+// template ::= <locale>? <item>+
+pub fn template(scanner: &mut Scanner) -> Result<ContentTokens, UserError> {
     debug!("Starting template");
-    let mut tokens: Vec<ContentToken> = Vec::new();
 
+    // Errors which occur while parsong the locale are always
+    // irgnored because the locale is optional. TODO: It would
+    // be a better idea to propagate a warning instead.
+    let mut tokens = match locale(scanner) {
+        Ok(locale) => ContentTokens::from(locale),
+        Err(_) => ContentTokens::new(),
+    };
+    
     let e = loop {
         match item(scanner) {
             Ok(token) => tokens.push(token),
@@ -65,6 +71,46 @@ pub fn item(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
     }
 }
 
+pub fn locale(scanner: &mut Scanner) -> Result<Locale, UserError> {
+    debug!("Starting locale");
+    scanner.begin();
+    // Falls es eine locale gibt, muss sie valide sein. Sonst nicht
+
+    let input = match chars(scanner) {
+        Ok(chars) => chars,
+        Err(e) => {
+            debug!("Didn't find potential locale");
+            scanner.abort();
+            return Err(e);
+        }
+    };
+    let locale: Locale = match input.parse() {
+        Ok(locale) => locale,
+        Err(e) => {
+            debug!("Found locale is invalid");
+            scanner.abort();
+            let e = UserError {
+                parse_error: ParseError::LocaleError(Box::new(e)),
+                context: ContextMsg::InvalidContainedIn("locale".to_owned()),
+                possible: PossibleMsg::None,
+            };
+            return Err(e);
+        }
+    };
+    if let Err(e) = scanner.take(Terminals::Nl) {
+        debug!("Failed to finish locale (Missing '\\n')");
+        let e = UserError {
+            parse_error: ParseError::LexicalError(e),
+            context: ContextMsg::InvalidClosingOf("locale".to_owned()),
+            possible: PossibleMsg::DidYouForget("a new line after the locale".to_owned()),
+        };
+        return Err(e);
+    }
+    scanner.commit();
+    debug!("Successfully finished locale");
+    Ok(locale)
+}
+
 // <text> ::= (<chars> | <ws>)+
 // <ws>   ::= (" " | "\t" | "\n")+
 // <chars> ::= ([A-Z] | [a-z])+
@@ -90,6 +136,32 @@ pub fn text(scanner: &mut Scanner) -> Result<String, UserError> {
     scanner.commit();
     debug!("Successfully finished text");
     Ok(text)
+}
+
+// <chars> ::= *any characters except for the terminals and whitespace*
+pub fn chars(scanner: &mut Scanner) -> Result<String, UserError> {
+    debug!("Starting characters");
+    scanner.begin();
+
+    let chars = match scanner.scan(|symbol| match symbol {
+        any if any.is_whitespace() => None,
+        any if !any.is_terminal() => Some(Action::Request),
+        _ => None,
+    }) {
+        Ok(chars) => chars,
+        Err(e) => {
+            debug!("Failed to finish chars");
+            let e = UserError {
+                parse_error: ParseError::LexicalError(e),
+                context: ContextMsg::InvalidContainedIn("characters section".to_owned()),
+                possible: PossibleMsg::ForbiddenAre("'{', '}', '$' or whitespace characters".to_owned()),
+            };
+            return Err(e);
+        },
+    };
+    scanner.commit();
+    debug!("Successfully finished chars");
+    Ok(chars)
 }
 
 // key ::= "{" <ident> "}"
@@ -246,6 +318,7 @@ pub enum Terminals {
     RBrace = b'}',
     Cash = b'$',
     Colon = b':',
+    Nl = b'\n',
 }
 
 // Trait which can be implementend on any potential terminal or non-terminal symbol
@@ -268,7 +341,7 @@ impl Symbol for char {
 }
 
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug)]
 pub struct UserError {
     parse_error: ParseError,
     context: ContextMsg,
@@ -327,6 +400,7 @@ impl std::fmt::Display for ContextMsg {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PossibleMsg {
     DidYouMean(String),
+    DidYouForget(String),
     AllowedAre(String),
     ForbiddenAre(String),
     None,
@@ -338,6 +412,9 @@ impl std::fmt::Display for PossibleMsg {
             PossibleMsg::DidYouMean(maybe) => {
                 write!(f, "Did you maybe mean '{}'?", maybe)
             },
+            PossibleMsg::DidYouForget(maybe) => {
+                write!(f, "Did you maybe forget {}?", maybe)
+            }
             PossibleMsg::AllowedAre(allowed) => {
                 write!(f, "Allowed characters are {}", allowed)
             },
@@ -351,9 +428,11 @@ impl std::fmt::Display for PossibleMsg {
     }
 }
 
-#[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
+#[derive(thiserror::Error, Debug)]
 pub enum ParseError {
     #[error(transparent)]
     LexicalError(#[from] ScanError),
+    #[error("Locale Error")]
+    LocaleError(#[source] Box<dyn std::error::Error>),    
 }
 
