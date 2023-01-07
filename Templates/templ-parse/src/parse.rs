@@ -40,15 +40,15 @@ pub fn item(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
         Ok(sequence) => {
             match sequence.as_str() {
                 "${" => match option(scanner) {
-                    Ok(ident) => Ok(ContentToken::Option(ident)),
+                    Ok(token) => Ok(token),
                     Err(e) => Err(e),
                 },
                 "$" => match constant(scanner) {
-                    Ok(ident) => Ok(ContentToken::Constant(ident)),
+                    Ok(token) => Ok(token),
                     Err(e) => Err(e),
                 },
                 "{" => match key(scanner) {
-                    Ok(ident) => Ok(ContentToken::Key(ident)),
+                    Ok(token) => Ok(token),
                     Err(e) => Err(e),
                 },
                 _ => match text(scanner) {
@@ -70,82 +70,30 @@ pub fn item(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
 // <chars> ::= ([A-Z] | [a-z])+
 pub fn text(scanner: &mut Scanner) -> Result<String, UserError> {
     debug!("Starting text");
-    let mut text = String::new();
+    scanner.begin();
 
-    return loop {
-        if let Ok(chars) = ws(scanner) {
-            text.push_str(&chars);
-            continue;
-        } else if let Ok(chars) = characters(scanner) {
-            text.push_str(&chars);
-            continue;
-        } else {
-            // Return the text once no valid characters can be found
-            break if !text.is_empty() {            
-                debug!("Successfully finished text");
-                Ok(text)
-            } else {
-                let mut best_attempt =
-                    ws(scanner).unwrap_err().or_better(
-                        characters(scanner).unwrap_err()
-                    );
-                best_attempt.context = ContextMsg::InvalidContainedIn("text section".to_owned());
-                best_attempt.possible = PossibleMsg::AllowedAre("'\\n', '\\t' or ' ', \
-                    while '{', '}' or '$' are forbidden".to_owned()); // TODO: Allow multiple messages
-                debug!("Failed to finish text: returning best attempt");
-                Err(best_attempt)
-            }
-        }
-    }
-}
-
-// <ws> ::= (" " | "\t" | "\n")+
-pub fn ws(scanner: &mut Scanner) -> Result<String, UserError> {
-    debug!("Starting whitespace");
-    let ws_chars = match scanner.scan(|symbol| match symbol {
-        ' ' | '\t' | '\n' => Some(Action::Request),
+    let text = match scanner.scan(|symbol| match symbol {
+        any if !any.is_terminal() => Some(Action::Request),
         _ => None,
     }) {
-        Ok(chars) => chars,
+        Ok(text) => text,
         Err(e) => {
-            debug!("Failed to finish whitespace");
-            let e = UserError {
-                parse_error: ParseError::LexicalError(e),
-                context: ContextMsg::InvalidContainedIn("whitespace section".to_owned()),
-                possible: PossibleMsg::AllowedAre("'\\n', '\\t' or ' '".to_owned()),
-            };
-            return Err(e);
-        },
-    };
-    debug!("Succesfully finished whitespace");
-    Ok(ws_chars)
-}
-
-// <chars> ::= ([A-Z] | [a-z])
-pub fn characters(scanner: &mut Scanner) -> Result<String, UserError> {
-    debug!("Starting characters");
-    let chars = match scanner.scan(|symbol| if symbol.is_terminal() {
-            None
-        } else {
-            Some(Action::Request)
-    }) {
-        Ok(chars) => chars,
-        Err(e) => {
-            debug!("Failed to finish charactes");
+            debug!("Failed to finish text ");
             let e = UserError {
                 parse_error: ParseError::LexicalError(e),
                 context: ContextMsg::InvalidContainedIn("text section".to_owned()),
                 possible: PossibleMsg::ForbiddenAre("'{', '}' or '$'".to_owned()),
             };
             return Err(e);
-        }
+        },
     };
-    debug!("Successfully finished characters");
-    Ok(chars)
+    scanner.commit();
+    debug!("Successfully finished text");
+    Ok(text)
 }
 
 // key ::= "{" <ident> "}"
-pub fn key(scanner: &mut Scanner) -> Result<Ident, UserError> {
+pub fn key(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
     debug!("Starting key");
     scanner.begin();
     if let Err(e) = scanner.take(Terminals::LBrace) {
@@ -169,6 +117,17 @@ pub fn key(scanner: &mut Scanner) -> Result<Ident, UserError> {
             return Err(e);
         },
     };
+    let default = match default(scanner) {
+        Ok(default) => if let Some(token) = default {
+            Some(Box::new(token))
+        } else {
+            None
+        },
+        Err(e) => {
+            debug!("Failed to finish key (incorrect default)");
+            return Err(e);
+        },
+    };
     if let Err(e) = scanner.take(Terminals::RBrace) {
         debug!("Failed to finish key (Missing RBrace)");
         let e = UserError {
@@ -180,7 +139,28 @@ pub fn key(scanner: &mut Scanner) -> Result<Ident, UserError> {
     }
     scanner.commit();
     debug!("Successfully finished key");
-    Ok(ident)
+    Ok(ContentToken::Key(ident, default))
+}
+
+// <default> ::= ":" <item>
+pub fn default(scanner: &mut Scanner) -> Result<Option<ContentToken>, UserError> {
+    debug!("Starting default");
+    scanner.begin();
+    if let Err(_) = scanner.take(Terminals::Colon) {
+        debug!("Failed to finish default (Missing colon)");
+        return Ok(None);
+    }
+    let token = match item(scanner) {
+        Ok(token) => token,
+        Err(mut e) => {
+            debug!("Failed to finish default (incorrect item)");
+            e.context = ContextMsg::InvalidContainedIn("default for key".to_owned());
+            return Err(e);
+        },
+    };
+    scanner.commit();
+    debug!("Successfully finished default");
+    Ok(Some(token))
 }
 
 // <ident> ::= (<char> | [0-9])+
@@ -202,7 +182,7 @@ pub fn ident(scanner: &mut Scanner) -> Result<Ident, ParseError> {
 }
 
 // <option> ::= "$" <key>
-pub fn option(scanner: &mut Scanner) -> Result<Ident, UserError> {
+pub fn option(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
     debug!("Starting options");
     scanner.begin();
     if let Err(e) = scanner.take(Terminals::Cash) {
@@ -214,7 +194,7 @@ pub fn option(scanner: &mut Scanner) -> Result<Ident, UserError> {
         };
         return Err(e);
     }
-    let ident = match key(scanner) {
+    let key = match key(scanner) {
         Ok(ident) => ident,
         Err(mut e) => {
             debug!("Failed to finish options (incorrect ident)");
@@ -224,11 +204,11 @@ pub fn option(scanner: &mut Scanner) -> Result<Ident, UserError> {
     };
     scanner.commit();
     debug!("Successfully finished option");
-    Ok(ident)
+    Ok(ContentToken::Option(Box::new(key)))
 }
 
 // <constant> ::= "$" <ident>
-pub fn constant(scanner: &mut Scanner) -> Result<Ident, UserError> {
+pub fn constant(scanner: &mut Scanner) -> Result<ContentToken, UserError> {
     debug!("Starting constant");
     debug!("Scanner is at: {}", scanner.current_char().unwrap());
     scanner.begin();
@@ -255,7 +235,7 @@ pub fn constant(scanner: &mut Scanner) -> Result<Ident, UserError> {
     };
     scanner.commit();
     debug!("Successfully finished constant");
-    Ok(ident)    
+    Ok(ContentToken::Constant(ident))    
 }
 
 // Terminal-symbol representation
@@ -265,6 +245,7 @@ pub enum Terminals {
     LBrace = b'{',
     RBrace = b'}',
     Cash = b'$',
+    Colon = b':',
 }
 
 // Trait which can be implementend on any potential terminal or non-terminal symbol
@@ -278,7 +259,9 @@ pub trait Symbol {
 impl Symbol for char {
     fn is_terminal(&self) -> bool {
         match self {
-            '{' | '}' | '$' => true,
+            // Don't consider ':' here because ':' is only a terminal
+            // in the context of a key
+            '{' | '}' | '$'=> true,
             _ => false,
         }
     }
@@ -290,24 +273,6 @@ pub struct UserError {
     parse_error: ParseError,
     context: ContextMsg,
     possible: PossibleMsg,  // Info on the possible characters
-}
-
-impl UserError {
-    // Get the `ParseError` instance which advanced further inside the source.
-    // Always returns `self` if non of the instances are `LexicalError`s.
-    // If both advanced the same distance `self` is returned too.
-    fn or_better(self, other: Self) -> Self {
-        debug!("Choosing best attempt from: self={:?}, other={:?}", &self.parse_error, &other.parse_error);
-        match (&self.parse_error, &other.parse_error) {
-            (ParseError::LexicalError(self_err), ParseError::LexicalError(other_err)) => {
-                if self_err.failed_after() >= other_err.failed_after() {
-                    self
-                } else {
-                    other
-                }
-            },
-        }
-    }
 }
 
 impl std::error::Error for UserError {}

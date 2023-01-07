@@ -1,9 +1,9 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContentToken {
     Text(String),
-    Key(Ident),
+    Key(Ident, Option<Box::<ContentToken>>),
     Constant(Ident),
-    Option(Ident),
+    Option(Box::<ContentToken>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

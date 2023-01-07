@@ -27,11 +27,18 @@ mod tests {
     use crate::{Lazy, LOGGING};
 
     #[test]
-    fn key_errors_are_correct() {
-        let cases = vec![
-            ("{nam$}", ""),
+    fn correct_defaults_are_accepted() {
+        Lazy::force(&LOGGING);
+        let key_defaults = vec![
+            "{name:hallo}",  // `text` default for key
+            "{name:$Me}",  // `constant` default for key
+            "{name:${Someone}}",  // `option` default for key
         ];
-        helper::test_output_contents(parse::key, cases);
+        helper::test_correct_variants(parse::key, key_defaults);
+        let opt_defaults = vec![
+            "${Someone:{name}}",  // `key` default for option
+        ];
+        helper::test_correct_variants(parse::option, opt_defaults);
     }
 
     #[test]
@@ -123,17 +130,17 @@ mod tests {
         // Other tests assert that any idents/text passes
         let pairs = vec![
             ("{key}$Constant${Option}", vec![
-                ContentToken::Key(Ident::new("key")),
+                ContentToken::Key(Ident::new("key"), None),
                 ContentToken::Constant(Ident::new("Constant")),
-                ContentToken::Option(Ident::new("Option")),
+                ContentToken::Option(Box::new(ContentToken::Key(Ident::new("Option"), None))),
             ]),
           ("S ${Anrede} {name}\n{n}\n$M\n$S", vec![
                 ContentToken::Text("S ".into()),
-                ContentToken::Option(Ident::new("Anrede")),
+                ContentToken::Option(Box::new(ContentToken::Key(Ident::new("Anrede"), None))),
                 ContentToken::Text(" ".into()),
-                ContentToken::Key(Ident::new("name")),
+                ContentToken::Key(Ident::new("name"), None),
                 ContentToken::Text("\n".into()),
-                ContentToken::Key(Ident::new("n")),
+                ContentToken::Key(Ident::new("n"), None),
                 ContentToken::Text("\n".into()),
                 ContentToken::Constant(Ident::new("M")),
                 ContentToken::Text("\n".into()),
@@ -141,9 +148,9 @@ mod tests {
             ]),
           ("Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar", vec![
                 ContentToken::Text("Sehr geehrte Frau ".into()),
-                ContentToken::Key(Ident::new("name")),
+                ContentToken::Key(Ident::new("name"), None),
                 ContentToken::Text("\n".into()),
-                ContentToken::Key(Ident::new("nachricht")),
+                ContentToken::Key(Ident::new("nachricht"), None),
                 ContentToken::Text("\nMit freundlichen Grüßen\nBar".into()),
             ]),
         ];
@@ -172,21 +179,6 @@ mod tests {
             ("$$}}{}$", "only contains invalid characters"),
         ];
         helper::test_incorrect_variants(parse::text, cases);
-    }
-
-    #[test]
-    fn correct_whitespace_sequences_are_accepted() {
-        let whitespaces = vec!["\n", "\t", " ", "  \n", "\t  \n"];
-        helper::test_correct_variants(parse::ws, whitespaces);
-    }
-
-    #[test]
-    fn incorrect_whitespace_sequences_are_rejected() {
-        let cases = vec![
-            ("sdf", "does not contain any whitespace characters"),
-            ("hswu\n sdh", "contains some non whitespace characters"),
-        ];
-        helper::test_incorrect_variants(parse::ws, cases);
     }
 
     mod helper {
@@ -220,22 +212,6 @@ mod tests {
                     variant,
                     case,
                 );            
-            }
-        }
-
-        pub fn test_output_contents<T, E>(
-            parse_fn: fn(&mut Scanner) -> Result<T, E>,
-            cases: Vec<(&str, &str)>,
-        )
-        where
-            T: std::fmt::Debug, E: std::error::Error
-        {
-            for (input, expected) in cases {
-                let mut scanner = Scanner::new(&input);
-                let output = parse_fn(&mut scanner).unwrap_err().to_string();
-                dbg!(&output);
-                dbg!(expected);
-                assert!(output.contains(expected));
             }
         }
     }

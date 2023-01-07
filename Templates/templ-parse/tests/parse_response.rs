@@ -19,8 +19,7 @@ const EMPTY: &'static str = "Cannot process an empty input";
 // `PossibleMsg`s
 const MAYBE: &'static str = "Did you maybe mean ";
 const ALLOWED: &'static str = "Allowed characters are ";
-// Not required while the error message for invalid text is unique
-// const FORBIDDEN: &'static str = "Forbidden characters are ";
+const FORBIDDEN: &'static str = "Forbidden characters are ";
 
 // Make assertions on the behaviour of the binary
 use assert_cmd::Command;
@@ -37,8 +36,8 @@ fn invalid_idents() {
 
 #[test]
 fn invalid_text() {
-    assert_out("$bla}", vec![CONTAINS, ALLOWED, TEXT]);
-    assert_out("blalbla}bla", vec![CONTAINS, ALLOWED, TEXT]);
+    assert_out("$bla}", vec![CONTAINS, FORBIDDEN, TEXT]);
+    assert_out("blalbla}bla", vec![CONTAINS, FORBIDDEN, TEXT]);
 }
 
 #[test]
