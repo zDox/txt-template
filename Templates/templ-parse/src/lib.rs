@@ -15,12 +15,7 @@ pub fn parse_str(s: &str) -> Result<Vec<ContentToken>, UserError> {
     Lazy::force(&LOGGING);
    
     let mut scanner = Scanner::new(s);
-    let result = parse::template(&mut scanner)?;
-    if scanner.at_end() {
-        Ok(result)
-    } else {
-        Err(ParseError::NotFinished.into())
-    }
+    parse::template(&mut scanner)
 }
 
 #[cfg(test)]
@@ -29,6 +24,7 @@ mod tests {
     use crate::parse;
     use crate::token::{ContentToken, Ident};
     use crate::parse_str;
+    use crate::{Lazy, LOGGING};
 
     #[test]
     fn key_errors_are_correct() {
@@ -96,6 +92,7 @@ mod tests {
 
     #[test]
     fn correct_constants_are_accepted() {
+        Lazy::force(&LOGGING);
         let options = vec!["$MyName", "$myname", "$me13", "$3.141"];
         helper::test_correct_variants(parse::constant, options);
     }
@@ -111,6 +108,7 @@ mod tests {
 
     #[test]
     fn correct_templates_are_accepted() {
+        Lazy::force(&LOGGING);
         let templates = vec![
             "{key}$Constant${Option}",
             "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sender",

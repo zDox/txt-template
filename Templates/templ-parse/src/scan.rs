@@ -69,6 +69,7 @@ pub struct Scanner {
 
 impl Scanner {
     pub fn new(s: &str) -> Self {
+        debug!("New scanner from: {}", &s);
         Self {
             cursor: Cursor::new(),
             chars: s.chars().collect(),
@@ -90,12 +91,17 @@ impl Scanner {
         self.cursor.add();
     }
 
+    pub fn abort(&mut self) {
+        debug!("Removing virtual cursor layer");
+        self.cursor.collapse(&self.chars);
+    }
+
     pub fn commit(&mut self) {
         debug!("Comitting virtual cursor layer");
         self.cursor.merge();
     }
 
-    fn current_char(&self) -> Option<char> {
+    pub fn current_char(&self) -> Option<char> {
         match self.chars.get(self.cursor.at()) {
             Some(character) => Some(*character),
             None => None,
@@ -111,6 +117,7 @@ impl Scanner {
             } else {
                 let symbol = UnexpectedSymbol{
                     found: character,
+                    expected: None,
                     position: self.cursor.collapse(&self.chars),
                 };
                 debug!("Failed to take character: {}", &symbol);
@@ -123,46 +130,63 @@ impl Scanner {
     }
 
     pub fn scan(&mut self, callback: impl Fn(char) -> Option<Action>) -> Result<String, ScanError> {
+        self.scan_str(|s| {
+            // Unwrap because `scan_str` always pushes a char to the sequence
+            // before evoking the callback
+            callback(s.chars().last().unwrap())
+        })
+    }
+
+    pub fn scan_str(&mut self, callback: impl Fn(&str) -> Option<Action>) -> Result<String, ScanError> {
         let mut sequence = String::new();
-        let mut require = false;
+        let mut require = None;
         let mut request = false;
 
         loop {
             match self.current_char() {
                 Some(target) => {
-                    match callback(target) {
+                    sequence.push(target);
+                    match callback(&sequence) {
                         Some(action) => {
-                            sequence.push(target);
                             match action {
                                 // Continue but return ok if next iteration fails
                                 Action::Request => {
                                     self.cursor.inc();
-                                    require = false;
+                                    require = None;
                                     request = true;
                                     debug!("Requesting result after character '{}'", target);
                                 },
                                 // Return now
                                 Action::Return => {
-                                    self.cursor.inc();  // TODO: Should the cursor increase here?
-                                    debug!("Returning result after character '{}'", target);
-                                    break Ok(sequence)
-                                },
-                                // Continue and return an error if next iteration fails
-                                Action::Require => {
                                     self.cursor.inc();
-                                    require = true;
-                                    debug!("Requiring next character after '{}'", target);
+                                    if let Some(require) = require {
+                                        if target == require {
+                                            debug!("Returning result after character '{}'", target);
+                                            break Ok(sequence)
+                                        } else {
+                                            debug!("Failed to return result after character '{}' \
+                                                because previous requirement was not matched. \
+                                                Now returning sequence up to the require call", target);
+                                            sequence.pop();  // Remove the new character which did not match
+                                            break Ok(sequence)
+                                        }
+                                    } else {
+                                        debug!("Returning result after character '{}'", target);
+                                        break Ok(sequence)
+                                    }
+                                },
+                                // Continue and return the current sequence if the next iteration
+                                // fails or does not match the given symbol
+                                Action::Require(symbol) => {
+                                    self.cursor.inc();
+                                    require = Some(symbol);
+                                    debug!("Requiring next character as '{}' after '{}'", target, symbol);
                                 },
                             }
                         },
-                        None => if require {
-                            let symbol = UnexpectedSymbol{
-                                found: target,
-                                position: self.cursor.collapse(&self.chars),
-                            };
-                            debug!("Failed to get required character: {}", &symbol);
-                            break Err(ScanError::UnexpectedSymbol(symbol))
-                        } else {
+                        None => {
+                            sequence.pop();  // The last character was invalid!
+                            
                             break match request {
                                 true => {
                                     debug!("Returning result after failing to get new character on request");
@@ -171,6 +195,7 @@ impl Scanner {
                                 false => {
                                     let symbol = UnexpectedSymbol{
                                         found: target,
+                                        expected: None,
                                         position: self.cursor.collapse(&self.chars),
                                     };
                                     debug!("Failed to get new character while neither requiring nor requesting: {}", &symbol);
@@ -180,20 +205,15 @@ impl Scanner {
                         }
                     }
                 } 
-                None => if require {
-                    debug!("Hit end of input while requiring");
-                    break Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))
-                } else {
-                    break match request {
-                        true => {
-                            debug!("Returning result after hitting end of input on request");
-                            Ok(sequence)
-                        },
-                        false => {
-                            debug!("Hit end of input while neither requiring nor requesting");
-                            Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))
-                        },
-                    }
+                None => break match request {
+                    true => {
+                        debug!("Returning result after hitting end of input on request");
+                        Ok(sequence)
+                    },
+                    false => {
+                        debug!("Hit end of input while neither requiring nor requesting");
+                        Err(ScanError::UnexpectedEndOfInput(self.cursor.collapse(&self.chars)))
+                    },
                 }
             }
         }
@@ -226,8 +246,8 @@ impl PosAsLines for Vec<char> {
 #[derive(Debug)]
 pub enum Action {
     Request,
-    Return,  // allows EBNF *
-    Require,  // allows EBNF +
+    Return,
+    Require(char),  // Like request but the next character has the be `char`
 }
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq, Clone, Copy)]
@@ -256,12 +276,17 @@ impl ScanError {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct UnexpectedSymbol {
     found: char,
+    expected: Option<char>,
     position: ErrorPosition,
 }
 
 impl std::fmt::Display for UnexpectedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "'{}' at {}", self.found, self.position)
+        if let Some(expected) = self.expected {
+            write!(f, "'{}' at {} (expected '{}')", self.found, self.position, expected)
+        } else {
+            write!(f, "'{}' at {}", self.found, self.position)
+        }
     }
 }
 
@@ -274,6 +299,9 @@ pub struct ErrorPosition {
 
 impl std::fmt::Display for ErrorPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "line {}, column {}", self.lines.0, self.lines.1)
+        match self.lines {
+            (1, column) => write!(f, "column {}", column),
+            (line, column) => write!(f, "line {}, column {}", line, column)
+        }
     }
 }

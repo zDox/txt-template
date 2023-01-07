@@ -16,7 +16,6 @@ const CTX_CLOSES: &'static str = "Found invalid closing character for ";
 const PSBL_MAYBE: &'static str = "Did you maybe mean ";
 const PSBL_ALLOWED: &'static str = "Allowed characters are ";
 const PSBL_FORBIDDEN: &'static str = "Forbidden characters are ";
-const NOT_FINISHED: &'static str = "Failed to parse the entire input";
 
 // Make assertions on the behaviour of the binary
 use assert_cmd::Command;
@@ -25,7 +24,7 @@ use self::helper::assert_out;
 #[test]
 fn invalid_key_ident() {
     // The ident of the key is interrupted by an invalid character
-    assert_out("{nam*e}", vec![CTX_CLOSES, PSBL_MAYBE]);  // TODO: Update this to CTX_CONTAINS once transforming
+    assert_out("{nam*e}", vec![CTX_CLOSES, PSBL_MAYBE]);  // TODO: Update this to CTX_CONTAINS
 }
 
 mod helper {

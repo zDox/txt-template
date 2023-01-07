@@ -3,55 +3,61 @@ use crate::token::{ContentToken, Ident};
 use log::debug;
 
 // TODO: Add meta data tag at beginning of the template
-// TODO: use transform to check for next rule instead of just trying all of them
-//     - using a transform offers more certainty
-// TODO: Remove the `NotFinished`-mechanism! It is a lazy way to not scan for
-// and decide on the next valid token.
-// If "{" is scanned the next token is a key
-// If "${" is scanned the next token is an option
-// If "$" is scanned the next token is a constant
+// TODO: Write more tests
 
 // template ::= ( <key> | <option> | <constant> | <text> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
     debug!("Starting template");
     let mut tokens: Vec<ContentToken> = Vec::new();
 
-    loop {
-        if let Ok(ident) = key(scanner) {
-            tokens.push(ContentToken::Key(ident));
-            continue;
-        } else if let Ok(ident) = constant(scanner) {
-            tokens.push(ContentToken::Constant(ident));
-            continue;
-        } else if let Ok(ident) = option(scanner) {
-            tokens.push(ContentToken::Option(ident));
-            continue;
-        } else if let Ok(text) = text(scanner) {
-            tokens.push(ContentToken::Text(text));
-            continue;
-        } else {
-            // Require at least one correct non-terminal to be found
-            if tokens.len() > 0 {
-                debug!("Successfully finished template");
-                break Ok(tokens)
-            } else {
-                // We ended up here because none of the following rules returned ture, therefore
-                // it is save to unwrap all their erroneous results.
-                // We choose to return the result to the user which advanced the furthest into
-                // the source until it failed.
-                debug!("Failed to finish template: searching for best attempt");
-                let best_attempt =
-                    key(scanner).unwrap_err().or_better(
-                        constant(scanner).unwrap_err().or_better(
-                            constant(scanner).unwrap_err().or_better(
-                                text(scanner).unwrap_err()
-                            )
-                        )
-                    );
-                debug!("Failed to finish template: returning best attempt: {:?}", &best_attempt);
-                break Err(best_attempt)
-            }
+    let e = loop {
+        scanner.begin();
+        let sequence = scanner.scan_str(|sequence| match sequence {
+            "${" => Some(Action::Return),
+            "$" => Some(Action::Require('{')),
+            "{" => Some(Action::Return),
+            _ => Some(Action::Return),
+        });
+        scanner.abort();
+
+        debug!("Sequence: {:?}", &sequence);
+        match sequence {
+            Ok(sequence) => {
+                tokens.push(match sequence.as_str() {
+                    "${" => match option(scanner) {
+                        Ok(ident) => ContentToken::Option(ident),
+                        Err(e) => break(e),
+                    },
+                    "$" => match constant(scanner) {
+                        Ok(ident) => ContentToken::Constant(ident),
+                        Err(e) => break(e),
+                    },
+                    "{" => match key(scanner) {
+                        Ok(ident) => ContentToken::Key(ident),
+                        Err(e) => break(e),
+                    },
+                    _ => match text(scanner) {
+                        Ok(text) => {
+                            // alt: `text.insert_str(0, &sequence)`
+                            // sequence.push_str(&text);
+                            ContentToken::Text(text)
+                        },
+                        Err(e) => break(e),
+                    }
+                })
+            },
+            Err(e) => break(UserError {
+                    parse_error: ParseError::LexicalError(e),
+                    context: ContextMsg::None,
+                    possible: PossibleMsg::None,
+            }),
         }
+    };
+
+    if tokens.len() > 0 {
+        Ok(tokens)
+    } else {
+        Err(e)
     }
 }
 
@@ -217,6 +223,7 @@ pub fn option(scanner: &mut Scanner) -> Result<Ident, UserError> {
 // <constant> ::= "$" <ident>
 pub fn constant(scanner: &mut Scanner) -> Result<Ident, UserError> {
     debug!("Starting constant");
+    debug!("Scanner is at: {}", scanner.current_char().unwrap());
     scanner.begin();
     if let Err(e) = scanner.take(Terminals::Cash) {
         debug!("Failed to finish constant (Missing Cash)");
@@ -291,15 +298,6 @@ impl UserError {
                 } else {
                     other
                 }
-            },
-            (ParseError::LexicalError(_), _) => {
-                self
-            },
-            (_, ParseError::LexicalError(_)) => {
-                other
-            },
-            (_, _) => {
-                self
             },
         }
     }
@@ -379,9 +377,7 @@ impl std::fmt::Display for PossibleMsg {
 
 #[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
 pub enum ParseError {
-    #[error("{0}")]
+    #[error(transparent)]
     LexicalError(#[from] ScanError),
-    #[error("Failed to parse the entire input")]
-    NotFinished,
 }
 
