@@ -2,10 +2,10 @@ pub mod parse;
 pub mod scan;
 pub mod token;
 
-use crate::token::ContentTokens;
 use crate::parse::UserError;
 use crate::scan::Scanner;
 use once_cell::sync::Lazy;
+pub use crate::token::ContentTokens;
 
 static LOGGING: Lazy<()> = Lazy::new(|| {
     env_logger::init();
@@ -18,6 +18,7 @@ pub fn parse_str(s: &str) -> Result<ContentTokens, UserError> {
     parse::template(&mut scanner)
 }
 
+
 #[cfg(test)]
 mod tests {
     use crate::scan::Scanner;
@@ -25,7 +26,7 @@ mod tests {
     use crate::token::{ContentToken, Ident};
     use crate::parse_str;
     use crate::{Lazy, LOGGING};
-    use unic_locale::parser::parse_locale;
+    use unic_locale::Locale;
 
     mod correct {
         use super::*;
@@ -165,12 +166,11 @@ mod tests {
         // Lenghts of literal text and idents in decreased so tests are more consice
         // Other tests assert that any idents/text passes
         let pairs = vec![
-            ("en_US\n{key}$Constant${Option}", vec![
-                ContentToken::Locale(parse_locale("en_US").unwrap()),
+            ("fr-FR\n{key}$Constant${Option}", vec![
                 ContentToken::Key(Ident::new("key"), None),
                 ContentToken::Constant(Ident::new("Constant")),
                 ContentToken::Option(Box::new(ContentToken::Key(Ident::new("Option"), None))),
-            ]),
+            ], Some("fr-FR")),
             ("S ${Anrede} {name}\n{n}\n$M\n$S", vec![
                 ContentToken::Text("S ".into()),
                 ContentToken::Option(Box::new(ContentToken::Key(Ident::new("Anrede"), None))),
@@ -182,14 +182,14 @@ mod tests {
                 ContentToken::Constant(Ident::new("M")),
                 ContentToken::Text("\n".into()),
                 ContentToken::Constant(Ident::new("S")),
-            ]),
+            ], None),
             ("Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar", vec![
                 ContentToken::Text("Sehr geehrte Frau ".into()),
                 ContentToken::Key(Ident::new("name"), None),
                 ContentToken::Text("\n".into()),
                 ContentToken::Key(Ident::new("nachricht"), None),
                 ContentToken::Text("\nMit freundlichen Grüßen\nBar".into()),
-            ]),
+            ], None),
             ("{name:Peter} bla ${bye:{mfg:MfG}}", vec![
                 ContentToken::Key(Ident::new("name"), Some(Box::new(ContentToken::Text("Peter".into())))),
                 ContentToken::Text(" bla ".into()),
@@ -200,12 +200,16 @@ mod tests {
                         )))   
                     )))
                 ))
-            ])
+            ], None)
         ];
-        for (template, expected) in pairs {
+        for (template, tokens, locale_str) in pairs {
             let result = parse_str(template).unwrap();
-                for (idx, token) in result.iter().enumerate() {
-                assert_eq!(token, expected.get(idx).unwrap());
+            if let Some(locale_str) = locale_str {
+                let locale: Locale = locale_str.parse().unwrap();
+                assert_eq!(*result.locale_ref(), locale);
+            }
+            for (idx, token) in result.tokens_ref().iter().enumerate() {
+                assert_eq!(token, tokens.get(idx).unwrap());
             }
         }
     }

@@ -27,9 +27,17 @@ impl ContentTokens {
     pub fn len(&self) -> usize {
         self.tokens.len()
     }
+
+    pub fn tokens_ref(&self) -> &Vec<ContentToken> {
+        &self.tokens
+    }
+
+    pub fn locale_ref(&self) -> &Locale {
+        &self.locale
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ContentToken {
     Text(String),
     Key(Ident, Option<Box::<ContentToken>>),
@@ -37,7 +45,7 @@ pub enum ContentToken {
     Option(Box::<ContentToken>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Ident(String);
 
 impl Ident {
