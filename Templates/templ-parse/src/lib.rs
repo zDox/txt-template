@@ -26,102 +26,131 @@ mod tests {
     use crate::parse_str;
     use crate::{Lazy, LOGGING};
 
-    #[test]
-    fn correct_defaults_are_accepted() {
-        Lazy::force(&LOGGING);
-        let key_defaults = vec![
-            "{name:hallo}",  // `text` default for key
-            "{name:$Me}",  // `constant` default for key
-            "{name:${Someone}}",  // `option` default for key
-        ];
-        helper::test_correct_variants(parse::key, key_defaults);
-        let opt_defaults = vec![
-            "${Someone:{name}}",  // `key` default for option
-        ];
-        helper::test_correct_variants(parse::option, opt_defaults);
+    mod correct {
+        use super::*;
+
+        #[test]
+        fn defaults_are_accepted() {
+            Lazy::force(&LOGGING);
+            let key_defaults = vec![
+                "{name:hallo}",  // `text` default for key
+                "{name:$Me}",  // `constant` default for key
+                "{name:${Someone}}",  // `option` default for key
+                "{name:${Kontake:Müller}}",  // `text` default for `option` default for `key`
+            ];
+            helper::test_correct_variants(parse::key, key_defaults);
+            let opt_defaults = vec![
+                "${Someone:{name}}",  // `key` default for option
+            ];
+            helper::test_correct_variants(parse::option, opt_defaults);
+        }
+
+        #[test]
+        fn keys_are_accepted() {
+            let keys = vec!["{name}", "{NAME}", "{NaMe}", "{n}", "{N}", "{08nsf}"];
+            helper::test_correct_variants(parse::key, keys);
+        }
+
+        #[test]
+        fn idents_are_accepted() {
+            let idents = vec!["hallo", "HALLO", "hAlLO", "h4ll0", "823480", "H4LLO"];
+            helper::test_correct_variants(parse::ident, idents);
+
+            let all_symbols = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            let mut scanner = Scanner::new(&all_symbols);
+            assert!(parse::ident(&mut scanner).is_ok());
+        }
+
+        #[test]
+        fn options_are_accepted() {
+            let options = vec!["${Adressat}", "${addressat}", "${NAME}"];
+            helper::test_correct_variants(parse::option, options);
+        }
+
+        #[test]
+        fn constants_are_accepted() {
+            Lazy::force(&LOGGING);
+            let options = vec!["$MyName", "$myname", "$me13", "$3.141"];
+            helper::test_correct_variants(parse::constant, options);
+        }
+
+        #[test]
+        fn templates_are_accepted() {
+            Lazy::force(&LOGGING);
+            let templates = vec![
+                "{key}$Constant${Option}",
+                "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sender",
+                "Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar",
+                "Hallo Herr {name:${Kontake:Müller}}, ich wollte ...",
+            ];
+            helper::test_correct_variants(parse::template, templates);
+        }
+
+        #[test]
+        fn texts_are_accepted() {
+            let texts = vec![
+                "Sehr geehrter Herr Foo \n\t iblbl", "\nHallo", "h", "\nllsf\n",
+                ")_!_&_)*@#*^+_[]0=082q5-=8';,m;,.<''\"",    
+                "\n \t ",
+            ];
+            helper::test_correct_variants(parse::text, texts);
+        }
     }
 
-    #[test]
-    fn correct_keys_are_accepted() {
-        let keys = vec!["{name}", "{NAME}", "{NaMe}", "{n}", "{N}", "{08nsf}"];
-        helper::test_correct_variants(parse::key, keys);
-    }
+    mod incorrect {
+        use super::*;
 
-    #[test]
-    fn incorrect_keys_are_rejected() {
-        let cases = vec![
-            ("name", "is missing braces"),
-            ("{name", "is missing right brace"),
-            ("name}", "is missing left brace"),
-            ("{&*(^)}", "contains invalid characters"),
-            ("{ /t\n}", "only contains whitespace charactes"),
-            ("{ /tsf\n}", "contains whitespace charactes"),
-        ];
-        helper::test_incorrect_variants(parse::key, cases);
-    }
+        #[test]
+        fn keys_are_rejected() {
+            let cases = vec![
+                ("name", "is missing braces"),
+                ("{name", "is missing right brace"),
+                ("name}", "is missing left brace"),
+                ("{&*(^)}", "contains invalid characters"),
+                ("{ /t\n}", "only contains whitespace charactes"),
+                ("{ /tsf\n}", "contains whitespace charactes"),
+            ];
+            helper::test_incorrect_variants(parse::key, cases);
+        }
 
-    #[test]
-    fn correct_idents_are_accepted() {
-        let idents = vec!["hallo", "HALLO", "hAlLO", "h4ll0", "823480", "H4LLO"];
-        helper::test_correct_variants(parse::ident, idents);
+        #[test]
+        fn idents_are_rejected() {
+            let cases = vec![
+                (" \n \t", "only contains whitespace characters"),
+                ("*)&%%_)+|", "only contains invalid characters"),
+                ("&*!abc", "starts out with invalid characters"),
+            ];
+            helper::test_incorrect_variants(parse::ident, cases);
+        }
 
-        let all_symbols = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let mut scanner = Scanner::new(&all_symbols);
-        assert!(parse::ident(&mut scanner).is_ok());
-    }
+        #[test]
+        fn options_are_rejected() {
+            let cases = vec![
+                ("$name", "is missing the braces"),
+                ("{name}", "is missing the dollar sign"),
+                ("${}", "is missing an identifier"),
+                ("$ {name}", "has a whitespace between the dollar sign and the first brace"),
+            ];
+            helper::test_incorrect_variants(parse::option, cases);
+        }
 
-    #[test]
-    fn incorrect_idents_are_rejected() {
-        let cases = vec![
-            (" \n \t", "only contains whitespace characters"),
-            ("*)&%%_)+|", "only contains invalid characters"),
-            ("&*!abc", "starts out with invalid characters"),
-        ];
-        helper::test_incorrect_variants(parse::ident, cases);
-    }
+        #[test]
+        fn constants_are_rejected() {
+            let cases = vec![
+                ("$ name", "has a whitespace between the dollar sign and the ident"),
+                ("${name}", "has braces around it's ident"),
+            ];
+            helper::test_incorrect_variants(parse::constant, cases);
+        }
 
-    #[test]
-    fn correct_options_are_accepted() {
-        let options = vec!["${Adressat}", "${addressat}", "${NAME}"];
-        helper::test_correct_variants(parse::option, options);
-    }
-
-    #[test]
-    fn incorrect_options_are_rejected() {
-        let cases = vec![
-            ("$name", "is missing the braces"),
-            ("{name}", "is missing the dollar sign"),
-            ("${}", "is missing an identifier"),
-            ("$ {name}", "has a whitespace between the dollar sign and the first brace"),
-        ];
-        helper::test_incorrect_variants(parse::option, cases);
-    }
-
-    #[test]
-    fn correct_constants_are_accepted() {
-        Lazy::force(&LOGGING);
-        let options = vec!["$MyName", "$myname", "$me13", "$3.141"];
-        helper::test_correct_variants(parse::constant, options);
-    }
-
-    #[test]
-    fn incorrect_constants_are_rejected() {
-        let cases = vec![
-            ("$ name", "has a whitespace between the dollar sign and the ident"),
-            ("${name}", "has braces around it's ident"),
-        ];
-        helper::test_incorrect_variants(parse::constant, cases);
-    }
-
-    #[test]
-    fn correct_templates_are_accepted() {
-        Lazy::force(&LOGGING);
-        let templates = vec![
-            "{key}$Constant${Option}",
-            "Sehr ${Anrede} {name}\n{nachricht}\n$Mfg\n$Sender",
-            "Sehr geehrte Frau {name}\n{nachricht}\nMit freundlichen Grüßen\nBar",
-        ];
-        helper::test_correct_variants(parse::template, templates);
+        #[test]
+        fn texts_are_rejected() {
+            let cases = vec![
+                ("{}\nsf{dsf}$", "contains invalid characters"),
+                ("$$}}{}$", "only contains invalid characters"),
+            ];
+            helper::test_incorrect_variants(parse::text, cases);
+        }
     }
 
     #[test]
@@ -160,25 +189,6 @@ mod tests {
                 assert_eq!(token, expected.get(idx).unwrap());
             }
         }
-    }
-
-    #[test]
-    fn correct_texts_are_accepted() {
-        let texts = vec![
-            "Sehr geehrter Herr Foo \n\t iblbl", "\nHallo", "h", "\nllsf\n",
-            ")_!_&_)*@#*^+_[]0=082q5-=8';,m;,.<''\"",    
-            "\n \t ",
-        ];
-        helper::test_correct_variants(parse::text, texts);
-    }
-
-    #[test]
-    fn incorrect_texts_are_rejected() {
-        let cases = vec![
-            ("{}\nsf{dsf}$", "contains invalid characters"),
-            ("$$}}{}$", "only contains invalid characters"),
-        ];
-        helper::test_incorrect_variants(parse::text, cases);
     }
 
     mod helper {
