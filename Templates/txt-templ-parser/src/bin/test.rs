@@ -1,4 +1,4 @@
-use templ_parse::parse_str;
+use txt_templ_parser::parse_str;
 
 use std::io::{Read, self};
 use std::env;
