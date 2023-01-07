@@ -7,24 +7,43 @@ const TEST_BIN: &'static str = "test";
 // Most of these could be taken from `src/parse.rs` but by
 // copying them here instead, the following tests can
 // stand fully on their own.
-const KEY_NAME: &'static str = "key";
-const CONSTANT_NAME: &'static str = "constant";
-const OPTION_NAME: &'static str = "option";
-const CTX_CONTAINS: &'static str = "Found invalid character(s) contained in ";
-const CTX_OPENS: &'static str = "Found invalid opening character for ";
-const CTX_CLOSES: &'static str = "Found invalid closing character for ";
-const PSBL_MAYBE: &'static str = "Did you maybe mean ";
-const PSBL_ALLOWED: &'static str = "Allowed characters are ";
-const PSBL_FORBIDDEN: &'static str = "Forbidden characters are ";
+const KEY: &'static str = "key";
+const CONSTANT: &'static str = "constant";
+const OPTION: &'static str = "option";
+const TEXT: &'static str = "text";
+// `ContextMsg`s
+const CONTAINS: &'static str = "Found invalid character(s) contained in ";
+// const OPENS: &'static str = "Found invalid opening character for ";
+const CLOSES: &'static str = "Found invalid closing character for ";
+const EMPTY: &'static str = "Cannot process an empty input";
+// `PossibleMsg`s
+const MAYBE: &'static str = "Did you maybe mean ";
+const ALLOWED: &'static str = "Allowed characters are ";
+// Not required while the error message for invalid text is unique
+// const FORBIDDEN: &'static str = "Forbidden characters are ";
 
 // Make assertions on the behaviour of the binary
 use assert_cmd::Command;
 use self::helper::assert_out;
 
 #[test]
-fn invalid_key_ident() {
+fn invalid_idents() {
     // The ident of the key is interrupted by an invalid character
-    assert_out("{nam*e}", vec![CTX_CLOSES, PSBL_MAYBE]);  // TODO: Update this to CTX_CONTAINS
+    assert_out("{nam*e}", vec![CLOSES, MAYBE, KEY]);  // TODO: Update this to CONTAINS
+    assert_out("{}", vec![CONTAINS, ALLOWED, KEY]);
+    assert_out("$---", vec![CONTAINS, ALLOWED, CONSTANT]);
+    assert_out("${}", vec![CONTAINS, ALLOWED, OPTION]);
+}
+
+#[test]
+fn invalid_text() {
+    assert_out("$bla}", vec![CONTAINS, ALLOWED, TEXT]);
+    assert_out("blalbla}bla", vec![CONTAINS, FORBIDDEN, TEXT]);
+}
+
+#[test]
+fn empty_input() {
+    assert_out("", vec![EMPTY]);
 }
 
 mod helper {

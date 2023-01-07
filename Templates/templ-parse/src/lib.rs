@@ -3,7 +3,7 @@ pub mod scan;
 pub mod token;
 
 use crate::token::ContentToken;
-use crate::parse::{ParseError, UserError};
+use crate::parse::UserError;
 use crate::scan::Scanner;
 use once_cell::sync::Lazy;
 

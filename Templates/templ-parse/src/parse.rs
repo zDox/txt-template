@@ -3,7 +3,6 @@ use crate::token::{ContentToken, Ident};
 use log::debug;
 
 // TODO: Add meta data tag at beginning of the template
-// TODO: Write more tests
 
 // template ::= ( <key> | <option> | <constant> | <text> )+
 pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
@@ -48,13 +47,13 @@ pub fn template(scanner: &mut Scanner) -> Result<Vec<ContentToken>, UserError> {
             },
             Err(e) => break(UserError {
                     parse_error: ParseError::LexicalError(e),
-                    context: ContextMsg::None,
+                    context: ContextMsg::EmptyInput,
                     possible: PossibleMsg::None,
             }),
         }
     };
 
-    if tokens.len() > 0 {
+    if tokens.len() > 0 && scanner.at_end() {
         Ok(tokens)
     } else {
         Err(e)
@@ -81,10 +80,13 @@ pub fn text(scanner: &mut Scanner) -> Result<String, UserError> {
                 debug!("Successfully finished text");
                 Ok(text)
             } else {
-                let best_attempt =
+                let mut best_attempt =
                     ws(scanner).unwrap_err().or_better(
                         characters(scanner).unwrap_err()
                     );
+                best_attempt.context = ContextMsg::InvalidContainedIn("text section".to_owned());
+                best_attempt.possible = PossibleMsg::AllowedAre("'\\n', '\\t' or ' ', \
+                    while '{', '}' or '$' are forbidden".to_owned()); // TODO: Allow multiple messages
                 debug!("Failed to finish text: returning best attempt");
                 Err(best_attempt)
             }
@@ -128,7 +130,7 @@ pub fn characters(scanner: &mut Scanner) -> Result<String, UserError> {
             let e = UserError {
                 parse_error: ParseError::LexicalError(e),
                 context: ContextMsg::InvalidContainedIn("text section".to_owned()),
-                possible: PossibleMsg::ForbiddenAre("'{', '}' or '$' ".to_owned()),
+                possible: PossibleMsg::ForbiddenAre("'{', '}' or '$'".to_owned()),
             };
             return Err(e);
         }
@@ -326,6 +328,7 @@ enum ContextMsg {
     InvalidContainedIn(String),  // Invalid  character(s) conatined in {identifier for key}
     InvalidOpeningOf(String),  // Invalid opening character of {key}
     InvalidClosingOf(String),  // Invalid closing character of {key}
+    EmptyInput,
     None,
 }
 
@@ -341,6 +344,9 @@ impl std::fmt::Display for ContextMsg {
             ContextMsg::InvalidClosingOf(target) => {
                 write!(f, "Found invalid closing character for {}", target)
             },
+            ContextMsg::EmptyInput => {
+                write!(f, "Cannot process an empty input")
+            }
             ContextMsg::None => {
                 write!(f, "")
             },
