@@ -28,7 +28,7 @@ use self::helper::assert_out;
 #[test]
 fn invalid_idents() {
     // The ident of the key is interrupted by an invalid character
-    assert_out("{nam*e}", vec![CLOSES, MAYBE, KEY]);  // TODO: Update this to CONTAINS
+    assert_out("{nam*e}", vec![CLOSES, MAYBE, KEY]);
     assert_out("{}", vec![CONTAINS, ALLOWED, KEY]);
     assert_out("$---", vec![CONTAINS, ALLOWED, CONSTANT]);
     assert_out("${}", vec![CONTAINS, ALLOWED, OPTION]);

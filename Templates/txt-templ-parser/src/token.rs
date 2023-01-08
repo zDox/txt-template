@@ -1,9 +1,11 @@
 use unic_locale::{Locale, locale};
+use crate::parse::UserError;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ContentTokens {
     tokens: Vec<ContentToken>,
     locale: Locale,
+    friendly_errors: Vec<UserError>,
 }
 
 impl ContentTokens {
@@ -11,13 +13,20 @@ impl ContentTokens {
         Self {
             tokens: vec![],
             locale: locale!("en-US"),
+            friendly_errors: vec![],
         }
     }
     pub fn from(locale: Locale) -> Self {
         Self {
             tokens: vec![],
             locale,
+            friendly_errors: vec![],
         }
+    }
+
+    // Add a friendly error to the `ContentTokens` instance
+    pub fn add_friendly(&mut self, e: UserError) {
+        self.friendly_errors.push(e);
     }
 
     pub fn push(&mut self, token: ContentToken) {

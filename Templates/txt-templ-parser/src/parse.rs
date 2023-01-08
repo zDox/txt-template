@@ -7,12 +7,13 @@ use unic_locale::Locale;
 pub fn template(scanner: &mut Scanner) -> Result<ContentTokens, UserError> {
     debug!("Starting template");
 
-    // Errors which occur while parsong the locale are always
-    // irgnored because the locale is optional. TODO: It would
-    // be a better idea to propagate a warning instead.
     let mut tokens = match locale(scanner) {
         Ok(locale) => ContentTokens::from(locale),
-        Err(_) => ContentTokens::new(),
+        Err(e) => {
+            let mut tokens = ContentTokens::new();
+            tokens.add_friendly(e);
+            tokens
+        },
     };
     
     let e = loop {
