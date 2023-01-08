@@ -3,10 +3,12 @@ use crate::parse::UserError;
 use crate::LOGGING;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+#[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 
 #[serde_with::serde_as]
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ContentMap(
     #[serde_as(as = "Vec<(_, _)>")]
     HashMap<TokenIdent, String>
@@ -27,7 +29,8 @@ impl ContentMap {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TokenIdent(String, Token);
 
 impl TokenIdent {
@@ -36,7 +39,8 @@ impl TokenIdent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Token {
     Key,
     Constant,
@@ -169,7 +173,8 @@ impl std::str::FromStr for ContentTokens {
     }
 }
 
-#[derive(thiserror::Error, Debug, Serialize, Deserialize)]
+#[derive(thiserror::Error, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FillOutError {
     #[error("The given content is missing a constant with the name {0}")]
     MissingConstant(Ident),
@@ -185,7 +190,8 @@ pub enum ContentToken {
     Option(Box::<ContentToken>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Ident(String);
 
 impl Ident {

@@ -2,6 +2,7 @@ use crate::scan::{Scanner, ScanError, Action};
 use crate::content::{ContentTokens, ContentToken, Ident};
 use log::debug;
 use unic_locale::Locale;
+#[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 
 // template ::= <locale>? <item>+
@@ -343,7 +344,8 @@ impl Symbol for char {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UserError {
     parse_error: ParseError,
     context: ContextMsg,
@@ -368,7 +370,8 @@ impl From<ParseError> for UserError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 enum ContextMsg {
     InvalidContainedIn(String),  // Invalid  character(s) conatined in {identifier for key}
     InvalidOpeningOf(String),  // Invalid opening character of {key}
@@ -399,7 +402,8 @@ impl std::fmt::Display for ContextMsg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 enum PossibleMsg {
     DidYouMean(String),
     DidYouForget(String),
@@ -430,7 +434,8 @@ impl std::fmt::Display for PossibleMsg {
     }
 }
 
-#[derive(thiserror::Error, Debug, Serialize, Deserialize)]
+#[derive(thiserror::Error, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ParseError {
     #[error(transparent)]
     LexicalError(#[from] ScanError),
