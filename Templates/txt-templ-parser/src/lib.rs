@@ -1,16 +1,19 @@
 pub mod parse; 
 pub mod scan;
 pub mod token;
+pub use crate::token::{ContentTokens, ContentMap, TokenIdent, Token, Ident};
 
 use crate::parse::UserError;
 use crate::scan::Scanner;
+use crate::token::ContentToken;
 use once_cell::sync::Lazy;
-pub use crate::token::ContentTokens;
+
 
 static LOGGING: Lazy<()> = Lazy::new(|| {
     env_logger::init();
 });
 
+// Attempt to parse the given string into a `ContentTokens` instance
 pub fn parse_str(s: &str) -> Result<ContentTokens, UserError> {
     Lazy::force(&LOGGING);
    
@@ -18,15 +21,90 @@ pub fn parse_str(s: &str) -> Result<ContentTokens, UserError> {
     parse::template(&mut scanner)
 }
 
+// Use the content map to substitue all values in `tokens` until
+// the entire template has been filled out.
+pub fn fill_out(tokens: ContentTokens, content: ContentMap) -> Result<String, FillOutError> {
+    Lazy::force(&LOGGING);
+
+    let mut output = String::new();
+
+    // Try to add the content for `token` to `output`
+    fn fill_out_token(token: ContentToken, content: &ContentMap, output: &mut String) -> Result<(), FillOutError> {
+        match token {
+            ContentToken::Text(text) => output.push_str(&text),
+            ContentToken::Constant(ident) => {
+                match content.get(TokenIdent::new(ident.as_ref(), Token::Constant)) {
+                    Some(content) => output.push_str(content),
+                    None => return Err(FillOutError::MissingConstant(ident)),
+                }
+            },
+            ContentToken::Key(ident, default_box) => {
+                match content.get(TokenIdent::new(ident.as_ref(), Token::Key)) {
+                    Some(content) => output.push_str(content),
+                    None => match default_box {
+                        Some(default_box) => return fill_out_token(*default_box, content, output),
+                        None => return Err(FillOutError::MissingKey(ident)),
+                    }
+                }
+            },
+            ContentToken::Option(key_box) => {
+                // TODO: Rn `option` is just a wrapper around `key`. Give `option` it's own logic!
+                return fill_out_token(*key_box, content, output);
+            },
+        }
+        Ok(())
+    }
+    
+    for token in tokens.into_tokens() {
+        fill_out_token(token, &content, &mut output)?;
+    }
+
+    Ok(output)
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FillOutError {
+    #[error("The given content is missing a constant with the name {0}")]
+    MissingConstant(Ident),
+    #[error("The given content is missing a key with the name {0}")]
+    MissingKey(Ident),
+}
+
 
 #[cfg(test)]
 mod tests {
-    use crate::scan::Scanner;
-    use crate::parse;
-    use crate::token::{ContentToken, Ident};
-    use crate::parse_str;
-    use crate::{Lazy, LOGGING};
+    use crate::token::Ident;
     use unic_locale::Locale;
+    use super::*;
+
+    #[test]
+    fn fill_out_works() {
+        let variants = vec![
+            ("Hallo Paul", "Hallo {name}".parse().unwrap(), vec![(TokenIdent::new("name", Token::Key), "Paul")]),
+            ("a Leto b Paul", "a {other} b $name".parse().unwrap(), vec![
+                (TokenIdent::new("other", Token::Key), "Leto"),
+                (TokenIdent::new("name", Token::Constant), "Paul"),
+            ]),
+            ("a Leto b Paul", "a {other:Leto} b $name".parse().unwrap(), vec![
+                (TokenIdent::new("name", Token::Constant), "Paul")
+            ]),
+            ("a Leto b Paul", "a {other:{othername:Leto}} b $name".parse().unwrap(), vec![
+                (TokenIdent::new("name", Token::Constant), "Paul")
+            ]),
+        ];
+        test_fill_out_variants(variants);
+    }
+
+    fn test_fill_out_variants(variants: Vec<(&str, ContentTokens, Vec<(TokenIdent, &str)>)>) {
+        for (expected, tokens, pairs) in variants {
+            let mut content = ContentMap::new();
+            for (ident, value) in pairs {
+                content.insert(ident, value.to_owned());
+            }
+            let output = fill_out(tokens, content);
+            assert_eq!(&output.unwrap(), expected);
+        }
+    }
 
     mod correct {
         use super::*;

@@ -1,4 +1,4 @@
-use txt_templ_parser::parse_str;
+use txt_templ_parser::ContentTokens;
 
 use std::io::{Read, self};
 use std::env;
@@ -17,7 +17,7 @@ fn main() {
         line.clear();
     }
 
-    let tokens = match parse_str(&content) {
+    let tokens: ContentTokens = match content.parse() {
         Ok(tokens) => tokens,
         Err(err) => {
             debug!("{}", &err);

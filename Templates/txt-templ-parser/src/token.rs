@@ -1,5 +1,40 @@
 use unic_locale::{Locale, locale};
 use crate::parse::UserError;
+use std::collections::HashMap;
+
+#[derive(Debug)]
+pub struct ContentMap(HashMap<TokenIdent, String>);
+
+impl ContentMap {
+    pub fn new() -> Self {
+        let map: HashMap<TokenIdent, String> = HashMap::new();
+        Self(map)
+    }
+
+    pub fn insert(&mut self, token: TokenIdent, content: String) {
+        self.0.insert(token, content);
+    }
+
+    pub fn get(&self, token: TokenIdent) -> Option<&String> {
+        self.0.get(&token)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct TokenIdent(String, Token);
+
+impl TokenIdent {
+    pub fn new(ident: &str, token: Token) -> Self {
+        Self(ident.to_owned(), token)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum Token {
+    Key,
+    Constant,
+    Option,
+}
 
 #[derive(Debug)]
 pub struct ContentTokens {
@@ -41,8 +76,20 @@ impl ContentTokens {
         &self.tokens
     }
 
+    pub fn into_tokens(self) -> Vec<ContentToken> {
+        self.tokens
+    }
+
     pub fn locale_ref(&self) -> &Locale {
         &self.locale
+    }
+}
+
+impl std::str::FromStr for ContentTokens {
+    type Err = UserError;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        crate::parse_str(s)
     }
 }
 
@@ -54,7 +101,7 @@ pub enum ContentToken {
     Option(Box::<ContentToken>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ident(String);
 
 impl Ident {
@@ -66,5 +113,17 @@ impl Ident {
 impl From<String> for Ident {
     fn from(s: String) -> Self {
         Self(s)
+    }
+}
+
+impl AsRef<str> for Ident {
+    fn as_ref<'a>(&'a self) -> &'a str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
