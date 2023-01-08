@@ -1,9 +1,14 @@
 use unic_locale::{Locale, locale};
 use crate::parse::UserError;
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
-pub struct ContentMap(HashMap<TokenIdent, String>);
+#[serde_with::serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ContentMap(
+    #[serde_as(as = "Vec<(_, _)>")]
+    HashMap<TokenIdent, String>
+);
 
 impl ContentMap {
     pub fn new() -> Self {
@@ -20,7 +25,7 @@ impl ContentMap {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TokenIdent(String, Token);
 
 impl TokenIdent {
@@ -29,7 +34,7 @@ impl TokenIdent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Token {
     Key,
     Constant,
@@ -101,7 +106,7 @@ pub enum ContentToken {
     Option(Box::<ContentToken>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Ident(String);
 
 impl Ident {

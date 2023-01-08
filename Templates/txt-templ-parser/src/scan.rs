@@ -1,5 +1,6 @@
 use crate::parse::Terminals;
 use log::{debug, trace};
+use serde::{Serialize, Deserialize};
 
 // List of virtual cursors guaranteeing at last one cursor
 #[derive(Debug)]
@@ -263,7 +264,7 @@ pub enum Action {
     Require(char),  // Like request but the next character has the be `char`
 }
 
-#[derive(thiserror::Error, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(thiserror::Error, Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum ScanError {
     #[error("{0}")]
     UnexpectedSymbol(UnexpectedSymbol),
@@ -286,7 +287,7 @@ impl ScanError {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnexpectedSymbol {
     found: char,
     expected: Option<char>,
@@ -303,7 +304,7 @@ impl std::fmt::Display for UnexpectedSymbol {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ErrorPosition {
     active: usize,
     base: usize,

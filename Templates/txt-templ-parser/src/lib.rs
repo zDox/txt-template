@@ -7,6 +7,7 @@ use crate::parse::UserError;
 use crate::scan::Scanner;
 use crate::token::ContentToken;
 use once_cell::sync::Lazy;
+use serde::{Serialize, Deserialize};
 
 
 static LOGGING: Lazy<()> = Lazy::new(|| {
@@ -62,7 +63,7 @@ pub fn fill_out(tokens: ContentTokens, content: ContentMap) -> Result<String, Fi
     Ok(output)
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Serialize, Deserialize)]
 pub enum FillOutError {
     #[error("The given content is missing a constant with the name {0}")]
     MissingConstant(Ident),
