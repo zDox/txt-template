@@ -1,7 +1,9 @@
 import("./node_modules/wasm-txt-templ/wasm_txt_templ.js").then(module => {
   try {
     // Load a template by parsing it.
-    let template = module.Template.parse("Hello {name}");
+    const input = "Hallo {name}";
+    document.getElementById("input").innerHTML = input;
+    const template = module.Template.parse(input);
 
     // Get a draft of the content table required by the template
     // and fill in the single missing value.
@@ -10,8 +12,8 @@ import("./node_modules/wasm-txt-templ/wasm_txt_templ.js").then(module => {
 
     // Use the content map to fill out the missing values
     // in the loaded template.
-    let filled_out = template.fill_out(JSON.stringify(content_map));
-    console.log(filled_out);
+    const output = template.fill_out(JSON.stringify(content_map));
+    document.getElementById("output").innerHTML = output;
   } catch(e) {
     console.error(e);
   }
