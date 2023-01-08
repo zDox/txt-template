@@ -6,11 +6,11 @@ use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 
-#[serde_with::serde_as]
 #[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", serde_with::serde_as)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ContentMap(
-    #[serde_as(as = "Vec<(_, _)>")]
+    #[cfg_attr(feature = "serde", serde_as(as = "Vec<(_, _)>"))]
     HashMap<TokenIdent, String>
 );
 
@@ -104,13 +104,15 @@ impl ContentTokens {
                 ContentToken::Text(text) => output.push_str(&text),
                 ContentToken::Constant(ident) => {
                     match content.get(TokenIdent::new(ident.as_ref(), Token::Constant)) {
-                        Some(content) => output.push_str(content),
+                        Some(content) if !content.is_empty() => output.push_str(content),
+                        Some(_) => return Err(FillOutError::EmptyContent(ident)),
                         None => return Err(FillOutError::MissingConstant(ident)),
                     }
                 },
                 ContentToken::Key(ident, default_box) => {
                     match content.get(TokenIdent::new(ident.as_ref(), Token::Key)) {
-                        Some(content) => output.push_str(content),
+                        Some(content) if !content.is_empty() => output.push_str(content),
+                        Some(_) => return Err(FillOutError::EmptyContent(ident)),
                         None => match default_box {
                             Some(default_box) => return fill_out_token(*default_box, content, output),
                             None => return Err(FillOutError::MissingKey(ident)),
@@ -180,6 +182,8 @@ pub enum FillOutError {
     MissingConstant(Ident),
     #[error("The given content is missing a key with the name {0}")]
     MissingKey(Ident),
+    #[error("The given content for the entry with the identifier {0} is empty")]
+    EmptyContent(Ident),
 }
 
 #[derive(Clone, Debug, PartialEq)]

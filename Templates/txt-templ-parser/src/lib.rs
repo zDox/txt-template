@@ -68,6 +68,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn fill_out_rejects_ummodified_drafs() {
+        let tokens: ContentTokens = "a {name} b $Const".parse().unwrap();
+        let draft = tokens.draft();
+        // While a draft contains all required keys, it's missing any content!
+        // Therefore `fill_out` should always reject a raw draft.
+        assert!(tokens.fill_out(draft).is_err());
+    }
+
 
     mod correct {
         use super::*;

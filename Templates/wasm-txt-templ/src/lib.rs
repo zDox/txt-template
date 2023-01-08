@@ -26,14 +26,14 @@ impl Template {
         }
     }
 
-    pub fn draft(&self) -> String {
+    pub fn draft(&self) -> JsValue {
         // Create a `ContentMap` containing all tokens required by the template
         let map = self.0.draft();
-        serde_json::to_string(&map).unwrap()
+        serde_wasm_bindgen::to_value(&map).unwrap()
     }
 
-    pub fn fill_out(self, json: String) -> Result<String, String> {
-        let content: ContentMap = serde_json::from_str(&json).unwrap();
+    pub fn fill_out(self, val: JsValue) -> Result<String, String> {
+        let content: ContentMap = serde_wasm_bindgen::from_value(val).unwrap();
         self.0.fill_out(content).or_else(|e| {
             // Convert errors to JSON
             Err(serde_json::to_string(&e).unwrap())

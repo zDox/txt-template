@@ -440,7 +440,7 @@ pub enum ParseError {
     #[error(transparent)]
     LexicalError(#[from] ScanError),
     #[error("Locale Error")]
-    #[serde(skip_serializing, skip_deserializing)]
+    #[cfg_attr(feature = "serde", serde(skip_serializing, skip_deserializing))]
     LocaleError(#[source] Box<dyn std::error::Error>),    
 }
 
