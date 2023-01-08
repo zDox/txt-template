@@ -26,9 +26,15 @@ impl Template {
         }
     }
 
+    pub fn draft(&self) -> String {
+        // Create a `ContentMap` containing all tokens required by the template
+        let map = self.0.draft();
+        serde_json::to_string(&map).unwrap()
+    }
+
     pub fn fill_out(self, json: String) -> Result<String, String> {
         let content: ContentMap = serde_json::from_str(&json).unwrap();
-        txt_templ_parser::fill_out(self.0, content).or_else(|e| {
+        self.0.fill_out(content).or_else(|e| {
             // Convert errors to JSON
             Err(serde_json::to_string(&e).unwrap())
         })

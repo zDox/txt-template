@@ -1,13 +1,11 @@
 pub mod parse; 
 pub mod scan;
-pub mod token;
-pub use crate::token::{ContentTokens, ContentMap, TokenIdent, Token, Ident};
+pub mod content;
+pub use crate::content::*;
 
 use crate::parse::UserError;
 use crate::scan::Scanner;
-use crate::token::ContentToken;
 use once_cell::sync::Lazy;
-use serde::{Serialize, Deserialize};
 
 
 static LOGGING: Lazy<()> = Lazy::new(|| {
@@ -22,66 +20,16 @@ pub fn parse_str(s: &str) -> Result<ContentTokens, UserError> {
     parse::template(&mut scanner)
 }
 
-// Use the content map to substitue all values in `tokens` until
-// the entire template has been filled out.
-pub fn fill_out(tokens: ContentTokens, content: ContentMap) -> Result<String, FillOutError> {
-    Lazy::force(&LOGGING);
-
-    let mut output = String::new();
-
-    // Try to add the content for `token` to `output`
-    fn fill_out_token(token: ContentToken, content: &ContentMap, output: &mut String) -> Result<(), FillOutError> {
-        match token {
-            ContentToken::Text(text) => output.push_str(&text),
-            ContentToken::Constant(ident) => {
-                match content.get(TokenIdent::new(ident.as_ref(), Token::Constant)) {
-                    Some(content) => output.push_str(content),
-                    None => return Err(FillOutError::MissingConstant(ident)),
-                }
-            },
-            ContentToken::Key(ident, default_box) => {
-                match content.get(TokenIdent::new(ident.as_ref(), Token::Key)) {
-                    Some(content) => output.push_str(content),
-                    None => match default_box {
-                        Some(default_box) => return fill_out_token(*default_box, content, output),
-                        None => return Err(FillOutError::MissingKey(ident)),
-                    }
-                }
-            },
-            ContentToken::Option(key_box) => {
-                // TODO: Rn `option` is just a wrapper around `key`. Give `option` it's own logic!
-                return fill_out_token(*key_box, content, output);
-            },
-        }
-        Ok(())
-    }
-    
-    for token in tokens.into_tokens() {
-        fill_out_token(token, &content, &mut output)?;
-    }
-
-    Ok(output)
-}
-
-#[derive(thiserror::Error, Debug, Serialize, Deserialize)]
-pub enum FillOutError {
-    #[error("The given content is missing a constant with the name {0}")]
-    MissingConstant(Ident),
-    #[error("The given content is missing a key with the name {0}")]
-    MissingKey(Ident),
-}
-
 
 #[cfg(test)]
 mod tests {
-    use crate::token::Ident;
     use unic_locale::Locale;
     use super::*;
 
     #[test]
     fn fill_out_works() {
         let variants = vec![
-            ("Hallo Paul", "Hallo {name}".parse().unwrap(), vec![(TokenIdent::new("name", Token::Key), "Paul")]),
+            ("Hallo Paul", "Hallo {name}".parse::<ContentTokens>().unwrap(), vec![(TokenIdent::new("name", Token::Key), "Paul")]),
             ("a Leto b Paul", "a {other} b $name".parse().unwrap(), vec![
                 (TokenIdent::new("other", Token::Key), "Leto"),
                 (TokenIdent::new("name", Token::Constant), "Paul"),
@@ -93,19 +41,33 @@ mod tests {
                 (TokenIdent::new("name", Token::Constant), "Paul")
             ]),
         ];
-        test_fill_out_variants(variants);
-    }
-
-    fn test_fill_out_variants(variants: Vec<(&str, ContentTokens, Vec<(TokenIdent, &str)>)>) {
+                                         
         for (expected, tokens, pairs) in variants {
-            let mut content = ContentMap::new();
-            for (ident, value) in pairs {
-                content.insert(ident, value.to_owned());
-            }
-            let output = fill_out(tokens, content);
+            let content = helper::content_map_from_vec(pairs);
+            let output = tokens.fill_out(content);
             assert_eq!(&output.unwrap(), expected);
         }
     }
+
+    #[test]
+    fn draft_works() {
+        let variants = vec![
+            ("a {name} b $Bye".parse::<ContentTokens>().unwrap(), vec![
+                (TokenIdent::new("name", Token::Key), ""),
+                (TokenIdent::new("Bye", Token::Constant), ""),
+            ]),
+            ("{other:{othername:Leto}}".parse::<ContentTokens>().unwrap(), vec![
+                (TokenIdent::new("other", Token::Key), ""),
+                (TokenIdent::new("othername", Token::Key), ""),
+            ]),
+        ];
+        for (tokens, pairs) in variants {
+            let expected = helper::content_map_from_vec(pairs);
+            let output = tokens.draft();
+            assert_eq!(expected, output);
+        }
+    }
+
 
     mod correct {
         use super::*;
@@ -325,6 +287,14 @@ mod tests {
                     case,
                 );            
             }
+        }
+
+        pub fn content_map_from_vec(v: Vec<(TokenIdent, &str)>) -> ContentMap {
+            let mut map = ContentMap::new();
+            for (ident, value) in v {
+                map.insert(ident, value.to_owned());
+            }
+            map
         }
     }
 }

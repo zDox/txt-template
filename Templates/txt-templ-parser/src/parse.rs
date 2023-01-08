@@ -1,5 +1,5 @@
 use crate::scan::{Scanner, ScanError, Action};
-use crate::token::{ContentTokens, ContentToken, Ident};
+use crate::content::{ContentTokens, ContentToken, Ident};
 use log::debug;
 use unic_locale::Locale;
 use serde::{Serialize, Deserialize};
