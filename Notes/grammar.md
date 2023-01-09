@@ -21,6 +21,7 @@ Bar
 ```
 
 ## EBNF grammar
+```
 <template> ::= <locale>? <item>+
 <locale>   ::= <chars> "\n"
 <item> 	   ::= <text> | <key> | <option> | <constant>
@@ -33,6 +34,7 @@ Bar
 <ws>       ::= (" " | "\t" | "\n")+
 <char>     ::= ([A-Z] | [a-z])
 <chars>    ::= <char>+
+```
 
 ### Corrections of the grammar
 1. <text> ::= <ws>? <chars> (<chars> | <ws>)* ==> <text> ::= (<chars> | <ws>)+
