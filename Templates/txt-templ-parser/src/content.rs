@@ -1,5 +1,4 @@
 use unic_locale::{Locale, locale};
-use crate::parse::UserError;
 use crate::LOGGING;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
