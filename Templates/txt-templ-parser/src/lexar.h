@@ -1,0 +1,64 @@
+#include <vector>
+#include <iostream>
+#include <string>
+#include "tokens.h"
+#include <algorithm>
+#ifndef LEXAR_H
+#define LEXAR_H
+const char whitespaces[] = {'\t', ' '};
+const std::string end_settings_block = "end-of-settings!";
+const char punctuators[] = {':'};
+
+bool is_whitespace(char c){
+	return (std::find(std::begin(whitespaces), std::end(whitespaces), c) != std::end(whitespaces));
+}
+bool is_punctuator(char c){
+	return (std::find(std::begin(punctuators), std::end(punctuators), c) != std::end(punctuators));
+}
+std::vector<Token *> lex(const std::string &str){	
+	std::vector<Token *> tokens;	
+	int left = 0, right = 0;
+	int length = str.length();
+	bool settings_decleared = str.find(end_settings_block) != std::string::npos;
+	std::cout << settings_decleared<<'\n';
+	
+	while(right<length && left<=right){
+		std::cout << "l: " << left << " r: " << right << '\n';
+		if(settings_decleared){
+			if(left==right && (is_whitespace(str.at(right)) | str.at(right) == '\n')){
+				right++;
+				left=right;
+			}
+			else if(left==right && str.at(right) == ':'){
+				right++;
+				left=right;
+				tokens.push_back(new Token(TokenType_COLON, ":"));
+			}	
+			else if(left!=right && (str.at(right) == ':' | is_whitespace(str.at(right)) | str.at(right) == '\n')){
+				std::string sub = str.substr(left, right-left);
+				if (sub.compare(end_settings_block)== 0){
+					tokens.push_back(new Token(TokenType_END_OF_SETTINGS, end_settings_block));
+					settings_decleared = false;
+				}
+				else {
+					tokens.push_back(new Token(TokenType_TEXT, sub));
+				}
+				left=right;
+			}
+			else if(!(str.at(right) == ':' | is_whitespace(str.at(right)) | str.at(right) == '\n')){
+				right++;
+			}	
+		}
+		else {
+			break;
+		}
+	}
+	return tokens;
+}
+
+void print_tokens(std::vector<Token *>tokens){
+	for (Token *token : tokens){
+		std::cout << "content: " << token->content << '\n';
+	}
+}	
+#endif
