@@ -7,7 +7,7 @@
 #define LEXAR_H
 const char whitespaces[] = {'\t', ' '};
 const std::string end_settings_block = "end-of-settings!";
-const char punctuators[] = {':'};
+const char punctuators[] = {':', '{', '}', '$'};
 
 bool is_whitespace(char c){
 	return (std::find(std::begin(whitespaces), std::end(whitespaces), c) != std::end(whitespaces));
@@ -39,6 +39,7 @@ std::vector<Token *> lex(const std::string &str){
 				if (sub.compare(end_settings_block)== 0){
 					tokens.push_back(new Token(TokenType_END_OF_SETTINGS, end_settings_block));
 					settings_decleared = false;
+					right = str.find('\n', right)+1;
 				}
 				else {
 					tokens.push_back(new Token(TokenType_TEXT, sub));
@@ -50,7 +51,36 @@ std::vector<Token *> lex(const std::string &str){
 			}	
 		}
 		else {
-			break;
+			if(is_punctuator(str.at(right)) && left!=right){
+				std::string sub = str.substr(left, right-left);
+				tokens.push_back(new Token(TokenType_TEXT, sub));
+				left = right;
+			}
+			else if (is_punctuator(str.at(right)) && left == right){
+				switch (str.at(right)){
+					case '{':
+						tokens.push_back(new Token(TokenType_LBRACE, "{"));
+						break;
+					case '}':
+						tokens.push_back(new Token(TokenType_RBRACE, "}"));
+						break;
+					case '$':
+						tokens.push_back(new Token(TokenType_DOLLER, "$"));
+						break;
+					case ':':
+						tokens.push_back(new Token(TokenType_COLON, ":"));
+						break;
+				}
+				right++;
+				left=right;
+			}
+			else {
+				right++;
+				if (right >= length){
+					std::string sub = str.substr(left, right-left);
+					tokens.push_back(new Token(TokenType_TEXT, sub));
+				}
+			}
 		}
 	}
 	return tokens;
