@@ -22,14 +22,16 @@ Bar
 
 ## EBNF grammar
 ```bnf
-<template>		::= <locale>? <item>+
-<locale>		  ::= <chars> "\n"
-<item>			  ::= <text> | <key> | <option> | <constant>
+<template>		::= <settings>? <token>+
+<settings>    ::= <setting>+ "end-of-settings!"
+<setting>     ::= <locale> /* |  any other settings */
+<locale>      ::= "locale" <whitespaces> ":" <whitespaces> /* a valid locale value (managed externally) */
+<token>			  ::= <text> | <key> | <option> | <constant>
 <text>     		::= (<chars> | <whitspace> | [0-9])+
 <key>      		::= "{" <ident> <default>? "}"
-<default>  		::= ":" <item>
-<option>   		::= "$" <key>
+<option>   		::= "${" <ident> <default>? "}" 
 <constant> 		::= "$" <ident>
+<default>  		::= ":" <token>
 <ident>    		::= (<char> | [0-9])+
 <whitspace>		::= (" " | "\t" | "\n")
 <whitspaces>	::= <whitspace>+
