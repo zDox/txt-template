@@ -24,6 +24,7 @@ Variable* get_variable(std::unordered_map<std::string, Variable*> &variable_stor
 std::string parse(std::vector<Token *> tokens){
 	std::unordered_map<std::string, Variable*> variable_storage;
 	variable_storage["elternteil"] = new Variable(VariableType_CONSTANT, "Mutter");
+	variable_storage["name"] = new Variable(VariableType_OPTION, "eltrnteil");
 	
 	bool settings_ended = std::find_if(tokens.begin(), tokens.end(), is_end_of_settings) == end(tokens);
 	int cursor = 0;
@@ -43,19 +44,51 @@ std::string parse(std::vector<Token *> tokens){
 	}
 	while (cursor < tokens.size()){
 		if (tokens[cursor]->type == TokenType_DOLLER){
-			if (	cursor+3 < tokens.size() &&
-				tokens[cursor+1]->type == TokenType_LBRACE && // DataType: Option
+			if (	tokens[cursor+1]->type == TokenType_LBRACE && // DataType: Option
 				tokens[cursor+2]->type == TokenType_TEXT &&
-				tokens[cursor+3]->type == TokenType_RBRACE){
-				cursor = cursor + 3;
-			}
-			else if(cursor+5 < tokens.size() &&
-				tokens[cursor+1]->type == TokenType_LBRACE && // DataType: Option with default
-				tokens[cursor+2]->type == TokenType_TEXT &&
-				tokens[cursor+3]->type == TokenType_COLON &&
-				tokens[cursor+4]->type == TokenType_TEXT &&
-				tokens[cursor+5]->type == TokenType_RBRACE){
-				cursor = cursor + 5;
+				((cursor+3 < tokens.size() &&
+				 tokens[cursor+3]->type == TokenType_RBRACE) | // Without Default
+				(cursor+5 < tokens.size() &&
+				 tokens[cursor+3]->type == TokenType_COLON && // With Default
+				 tokens[cursor+4]->type == TokenType_TEXT &&
+				 tokens[cursor+5]->type == TokenType_RBRACE))){
+				
+				bool has_default = tokens[cursor+3]->type == TokenType_COLON;
+				bool failed = false;
+				std::string identifier = remove_whitespaces(tokens[cursor+2]->content);
+				Variable* option = get_variable(variable_storage, identifier, VariableType_OPTION);
+				
+				if (option!=nullptr){
+					Variable* constant = get_variable(variable_storage, option->value, VariableType_CONSTANT);
+					if (constant!=nullptr){
+						str += constant->value;
+					}
+					else if (has_default){ // The constant behind the option is not set so it now should get the default
+						std::string default_str = remove_whitespaces(tokens[cursor+4]->content);
+						str += default_str;
+						std::cout << "Warning: Falling back to default. Option '" << identifier << "' can't get value for constant '" << option->value << "' not set" << "\n";
+					}
+					else {
+						failed = true;
+						std::cout << "Warning: Option '" << identifier << "' can't get value for constant '" << option->value << "' not set" << "\n";
+					}
+				}
+				else if (has_default){ // The option is not set up so now should get the default
+				      	std::string default_str = remove_whitespaces(tokens[cursor+4]->content);
+					str += default_str;
+					std::cout << "Warning: Falling back to default. Option '" << identifier << "' not set" << "\n";
+				}
+				else { // No default and the option has not been found -> failed
+					failed = true; 
+					std::cout << "Warning: Option '" << identifier << "' not set" << "\n";
+				}
+
+				if (failed) { // if it has to write the option statement as text and can't retrieve a value from the variable_storage
+					for(int i =cursor; i< cursor + 4 + has_default*2; i++){
+						str += tokens[i]->content;
+					}
+				}
+				cursor += 3 + has_default *2;
 			}
 			else if(cursor+1 < tokens.size() &&
 				tokens[cursor+1]->type == TokenType_TEXT){ // DataType: Constant
@@ -98,6 +131,9 @@ std::string parse(std::vector<Token *> tokens){
 
 		}
 		else if (tokens[cursor]->type == TokenType_TEXT){
+			str += tokens[cursor]->content;
+		}
+		else {
 			str += tokens[cursor]->content;
 		}
 		cursor++;
