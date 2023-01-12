@@ -25,14 +25,19 @@ std::vector<Token *> lex(const std::string &str){
 	while(right<length && left<=right){
 		std::cout << "l: " << left << " r: " << right << '\n';
 		if(settings_decleared){
-			if(left==right && (is_whitespace(str.at(right)) | str.at(right) == '\n')){
+			if(left==right && is_whitespace(str.at(right))){
 				right++;
 				left=right;
 			}
-			else if(left==right && str.at(right) == ':'){
+			else if(left==right && str.at(right) == ':') {
 				right++;
 				left=right;
 				tokens.push_back(new Token(TokenType_COLON, ":"));
+			}
+			else if(left==right && str.at(right) == '\n'){
+				right++;
+				left=right;
+				tokens.push_back(new Token(TokenType_NEW_LINE, "\n"));
 			}	
 			else if(left!=right && (str.at(right) == ':' | is_whitespace(str.at(right)) | str.at(right) == '\n')){
 				std::string sub = str.substr(left, right-left);
@@ -87,8 +92,8 @@ std::vector<Token *> lex(const std::string &str){
 }
 
 void print_tokens(std::vector<Token *>tokens){
-	for (Token *token : tokens){
-		std::cout << "content: " << token->content << '\n';
+	for (int i = 0; i < tokens.size(); i++){
+		std::cout << i << ". content: " << tokens[i]->content << '\n';
 	}
 }	
 #endif
