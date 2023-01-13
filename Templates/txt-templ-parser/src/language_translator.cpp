@@ -2,6 +2,8 @@
 #include "lexar.h"
 #include "tokens.h"
 #include "parser.h"
+#include "include/rapidjson/document.h"
+#include "include/base64/base64.h"
 #include <iostream> 
 #include <string> // the C++ Standard String Class
 int main(void){
@@ -9,6 +11,6 @@ int main(void){
 	std::vector<Token *> tokens = lex(template_str);
 	print_tokens(tokens);
 	std::string pub = parse(tokens);
-	std::cout << pub;
+	std::cout << base64_encode(pub) << "\n";
 	return 0;
 }
